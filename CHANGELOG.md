@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.1](https://github.com/kxngHADES/asg-harness/compare/v0.1.0...v0.1.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* accept "//model" typos and bare clear, exit, quit and help as commands ([a487bb5](https://github.com/kxngHADES/asg-harness/commit/a487bb5d43bf807d23e5fecadc29161596689569))
+* dashboard crashed with "connection lost" when no skills were installed ([a487bb5](https://github.com/kxngHADES/asg-harness/commit/a487bb5d43bf807d23e5fecadc29161596689569))
+
 ## 0.1.0 (2026-10-28)
 
 
