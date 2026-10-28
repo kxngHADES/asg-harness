@@ -77,6 +77,7 @@ mkdir -p "$dir"
 install -m 755 "$tmp/asg" "$dir/asg" 2>/dev/null || { cp "$tmp/asg" "$dir/asg" && chmod 755 "$dir/asg"; }
 say "installed $("$dir/asg" version) to $dir/asg"
 
+# shellcheck disable=SC2016 # $PATH stays literal in the printed hints
 case ":$PATH:" in
   *":$dir:"*) ;;
   *)

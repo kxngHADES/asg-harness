@@ -3,11 +3,19 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// args builds tool arguments with the path JSON-escaped (Windows paths
+// contain backslashes); extra is appended verbatim.
+func args(path, extra string) json.RawMessage {
+	p, _ := json.Marshal(path)
+	return json.RawMessage(fmt.Sprintf(`{"path":%s%s}`, p, extra))
+}
 
 func TestGlobToRegexp(t *testing.T) {
 	re, _ := globToRegexp("**/*.{go,md}")
@@ -27,11 +35,11 @@ func TestQuotedArgs(t *testing.T) {
 	f := filepath.Join(dir, "f.txt")
 	os.WriteFile(f, []byte("x\nx\nline3\n"), 0o644)
 
-	out, err := readTool().Run(context.Background(), json.RawMessage(`{"path":"`+f+`","offset":"3","limit":"1"}`))
+	out, err := readTool().Run(context.Background(), args(f, `,"offset":"3","limit":"1"`))
 	if err != nil || !strings.Contains(out, "line3") || strings.Contains(out, "\tx") {
 		t.Fatalf("read: %q %v", out, err)
 	}
-	_, err = editTool().Run(context.Background(), json.RawMessage(`{"path":"`+f+`","old_string":"x","new_string":"y","replace_all":"true"}`))
+	_, err = editTool().Run(context.Background(), args(f, `,"old_string":"x","new_string":"y","replace_all":"true"`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +54,7 @@ func TestQuotedArgs(t *testing.T) {
 func TestEditRequiresUnique(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "f.txt")
 	os.WriteFile(f, []byte("a a"), 0o644)
-	if _, err := editTool().Run(context.Background(), json.RawMessage(`{"path":"`+f+`","old_string":"a","new_string":"b"}`)); err == nil {
+	if _, err := editTool().Run(context.Background(), args(f, `,"old_string":"a","new_string":"b"`)); err == nil {
 		t.Fatal("expected ambiguity error")
 	}
 }

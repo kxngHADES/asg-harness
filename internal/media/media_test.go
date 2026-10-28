@@ -3,6 +3,7 @@ package media
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -13,8 +14,11 @@ func TestExtractDraggedPaths(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "my shot.png")
 	os.WriteFile(p, png, 0o644)
-	escaped := filepath.Join(dir, `my\ shot.png`)
-	for _, in := range []string{"what is " + escaped, `what is "` + p + `"`, "what is @'" + p + "'"} {
+	inputs := []string{`what is "` + p + `"`, "what is @'" + p + "'"}
+	if runtime.GOOS != "windows" { // backslash-escaped spaces are a Unix shell convention
+		inputs = append(inputs, "what is "+filepath.Join(dir, `my\ shot.png`))
+	}
+	for _, in := range inputs {
 		text, imgs, names := ExtractImages(in)
 		if len(imgs) != 1 || text != "what is" || names[0] != "my shot.png" || imgs[0].MediaType != "image/png" {
 			t.Errorf("ExtractImages(%q) = %q %d %v", in, text, len(imgs), names)
