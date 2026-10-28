@@ -1,0 +1,940 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASG Dashboard</title>
+<style>
+:root {
+  --paper: #efede4; --panel: #f8f7f1; --panel-2: #e6e3d7; --ink: #121310; --line: #121310; --soft: #c9c5b6;
+  --text: #121310; --muted: #6a675c; --accent: #c6f432; --accent-ink: #121310; --cyan: #0098b8; --magenta: #c2189a;
+  --ok: #2c8a3a; --err: #d1321f; --warn: #c27a00; --code: #e6e3d7; --shadow: 4px 4px 0 var(--ink);
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --sans: "Inter", ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0c0d0b; --panel: #141612; --panel-2: #1c1f19; --ink: #e8f0d8; --line: #3a4033; --soft: #2a2e25;
+    --text: #e8f0d8; --muted: #8b9480; --accent: #c6f432; --accent-ink: #0c0d0b; --cyan: #4de1ff; --magenta: #ff5fd8;
+    --ok: #7be38b; --err: #ff6b57; --warn: #ffb020; --code: #1c1f19; --shadow: 4px 4px 0 #000;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--paper); color: var(--text); font: 14px/1.6 var(--sans); }
+button, input, select, textarea { font: inherit; color: inherit; }
+code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+/* shell: rail + stage */
+.shell { display: grid; grid-template-columns: 196px 1fr; height: 100%; }
+.rail { border-right: 2px solid var(--line); background: var(--panel); display: flex; flex-direction: column; padding: 18px 14px; gap: 22px; }
+.mark { display: flex; align-items: center; gap: 10px; }
+.mark .glyph { background: var(--accent); color: var(--accent-ink); font: 800 15px/1 var(--mono); padding: 8px 9px; border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); letter-spacing: .04em; }
+.mark .word { font: 700 11px/1.25 var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--muted); }
+nav { display: flex; flex-direction: column; gap: 4px; }
+nav button { display: flex; align-items: center; gap: 10px; background: none; border: 2px solid transparent; padding: 8px 10px; cursor: pointer; color: var(--muted); font: 600 11.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .12em; text-align: left; }
+nav button .ico { width: 16px; text-align: center; font-size: 13px; }
+nav button:hover { color: var(--text); border-color: var(--soft); }
+nav button.active { color: var(--accent-ink); background: var(--accent); border-color: var(--ink); box-shadow: 3px 3px 0 var(--ink); }
+.rail-foot { margin-top: auto; font: 600 10.5px/1.6 var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.rail-foot .live { color: var(--ok); }
+.stage { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.strip { display: flex; align-items: center; gap: 10px; padding: 10px 22px; border-bottom: 2px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+.crumb { font: 700 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .16em; }
+.crumb span { color: var(--muted); }
+.spacer { flex: 1; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 2px solid var(--line); background: var(--paper); padding: 0 0 0 8px; font: 600 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.chip select { border: 0; border-left: 2px solid var(--line); background: var(--panel); padding: 6px 8px; font: 500 12px/1.2 var(--mono); text-transform: none; letter-spacing: 0; color: var(--text); max-width: 230px; outline: none; }
+.chip.voice { padding: 6px 10px; cursor: default; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 12px; color: var(--text); }
+.chip.voice b { color: var(--magenta); font-weight: 700; }
+
+main { flex: 1; min-height: 0; display: flex; }
+.view { display: none; flex: 1; min-height: 0; }
+.view.active { display: flex; }
+.page { flex: 1; overflow-y: auto; padding: 28px 24px 70px; }
+.page-inner { max-width: 900px; margin: 0 auto; }
+h2 { font: 800 30px/1.1 var(--sans); letter-spacing: -.03em; margin: 0 0 6px; text-transform: uppercase; }
+h2::before { content: "▍"; color: var(--accent); -webkit-text-stroke: 1px var(--ink); }
+h3 { font: 700 11.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .16em; margin: 26px 0 10px; }
+h4 { font: 700 11px/1 var(--mono); text-transform: uppercase; letter-spacing: .14em; margin: 22px 0 6px; color: var(--muted); }
+.sub { color: var(--muted); margin: 0 0 22px; max-width: 70ch; }
+.hint { font-size: 12.5px; margin: 0 0 10px; }
+
+.card { background: var(--panel); border: 2px solid var(--line); padding: 18px; box-shadow: var(--shadow); margin-bottom: 18px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+.field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 170px; }
+.field label { font: 700 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+input[type=text], input[type=password], input[type=number], select, textarea {
+  background: var(--paper); border: 2px solid var(--line); border-radius: 0; padding: 8px 10px; width: 100%; outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--ink); box-shadow: 3px 3px 0 var(--accent); }
+textarea { resize: vertical; }
+.btn { border: 2px solid var(--ink); background: var(--panel); padding: 7px 14px; cursor: pointer; white-space: nowrap; font: 700 11.5px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .1em; transition: transform .06s, box-shadow .06s; }
+.btn:hover { box-shadow: 3px 3px 0 var(--ink); transform: translate(-1px, -1px); }
+.btn:active { box-shadow: none; transform: translate(1px, 1px); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.danger { color: var(--err); border-color: var(--err); }
+.btn.small { padding: 4px 10px; font-size: 10.5px; }
+.btn:disabled { opacity: .45; cursor: default; box-shadow: none; transform: none; }
+.pill { display: inline-block; font: 700 10px/1 var(--mono); text-transform: uppercase; letter-spacing: .1em; padding: 4px 7px; border: 2px solid var(--line); color: var(--muted); }
+.pill.on { background: var(--accent); color: var(--accent-ink); border-color: var(--ink); }
+.pill.warn { color: var(--warn); border-color: var(--warn); }
+.toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; font-weight: 500; }
+.toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+.muted { color: var(--muted); }
+.err { color: var(--err); }
+.ok { color: var(--ok); }
+
+/* chat transcript */
+#chat { flex-direction: column; }
+#messages { flex: 1; overflow-y: auto; padding: 26px 24px; background-image: radial-gradient(var(--soft) 1px, transparent 1px); background-size: 18px 18px; }
+.msgs { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.msg { display: grid; grid-template-columns: 56px 1fr; gap: 14px; line-height: 1.65; }
+.msg::before { font: 800 10.5px/1 var(--mono); letter-spacing: .14em; padding: 6px 0; text-align: center; border: 2px solid var(--ink); height: fit-content; }
+.msg > .body { min-width: 0; word-break: break-word; }
+.msg.user::before { content: "YOU"; background: var(--panel); }
+.msg.user > .body { background: var(--panel); border: 2px solid var(--line); padding: 10px 14px; white-space: pre-wrap; }
+.msg.user img { max-width: 220px; max-height: 170px; display: block; margin-bottom: 8px; border: 2px solid var(--ink); }
+.msg.assistant::before { content: "ASG"; background: var(--accent); color: var(--accent-ink); box-shadow: 2px 2px 0 var(--ink); }
+.msg.assistant > .body { padding-top: 2px; }
+.msg.assistant p { margin: 0 0 10px; }
+.msg.assistant pre { background: var(--code); border: 2px solid var(--line); border-left: 6px solid var(--accent); padding: 12px; overflow-x: auto; }
+.msg.assistant :not(pre) > code { background: var(--code); padding: 1px 5px; border: 1px solid var(--soft); }
+.msg.assistant ul, .msg.assistant ol { margin: 0 0 10px; padding-left: 22px; }
+.msg.assistant li::marker { color: var(--magenta); }
+.msg.assistant h1, .msg.assistant h2, .msg.assistant h3, .msg.assistant h4 { font: 800 13px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .08em; margin: 16px 0 8px; color: var(--text); }
+.msg.assistant h1::before, .msg.assistant h2::before { content: none; }
+.msg.assistant a { color: var(--cyan); }
+.msg.notice::before { content: "NOTE"; color: var(--warn); border-color: var(--warn); }
+.msg.notice > .body { color: var(--warn); font-size: 13px; padding-top: 4px; }
+.msg.error::before { content: "ERR"; color: var(--err); border-color: var(--err); }
+.msg.error > .body { color: var(--err); font-size: 13px; padding-top: 4px; }
+.indent { margin-left: 70px; }
+.meta { color: var(--muted); font: 500 11px/1 var(--mono); display: flex; gap: 14px; align-items: center; text-transform: uppercase; letter-spacing: .08em; }
+.meta button { background: none; border: 0; border-bottom: 2px solid var(--soft); color: var(--muted); cursor: pointer; padding: 2px 0; font: inherit; text-transform: inherit; letter-spacing: inherit; }
+.meta button:hover { color: var(--text); border-color: var(--accent); }
+.tool { border: 2px solid var(--line); background: var(--panel); font-size: 13px; }
+.tool summary { padding: 7px 12px; cursor: pointer; display: flex; gap: 10px; align-items: center; list-style: none; }
+.tool summary::-webkit-details-marker { display: none; }
+.tool .dot { font: 800 10px/1 var(--mono); letter-spacing: .1em; color: var(--warn); }
+.tool .dot::before { content: "◆ RUN"; }
+.tool.done .dot { color: var(--cyan); } .tool.done .dot::before { content: "◆ OK"; }
+.tool.failed .dot { color: var(--err); } .tool.failed .dot::before { content: "✕ ERR"; }
+.tool .tname { font: 700 12px/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; }
+.tool .tsum { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; }
+.tool pre { margin: 0; padding: 10px 12px; border-top: 2px dashed var(--soft); background: var(--code); max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.approval { border: 2px solid var(--warn); background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--warn) 9%, var(--panel)) 0 10px, var(--panel) 10px 20px); padding: 14px; box-shadow: 4px 4px 0 var(--warn); }
+.approval .gate { font: 800 11px/1 var(--mono); letter-spacing: .16em; color: var(--warn); margin-bottom: 8px; }
+.approval pre { background: var(--paper); border: 2px solid var(--line); padding: 8px 10px; margin: 8px 0 12px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
+.approval .row { align-items: center; }
+.empty { margin: 12vh auto 0; text-align: left; max-width: 560px; }
+.empty .big { font: 900 clamp(64px, 12vw, 120px)/.85 var(--sans); letter-spacing: -.06em; }
+.empty .big span { background: var(--accent); color: var(--accent-ink); padding: 0 .08em; border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); display: inline-block; }
+.empty .tag { font: 700 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .2em; color: var(--muted); margin: 22px 0 18px; }
+.suggest { display: flex; gap: 8px; flex-wrap: wrap; }
+.suggest button { border: 2px solid var(--line); background: var(--panel); padding: 8px 12px; cursor: pointer; font-size: 13px; text-align: left; }
+.suggest button:hover { border-color: var(--ink); box-shadow: 3px 3px 0 var(--accent); }
+.typing > .body::after { content: "▮"; animation: blink 1s steps(1) infinite; color: var(--accent); -webkit-text-stroke: 1px var(--ink); }
+@keyframes blink { 50% { opacity: 0; } }
+
+#composer { border-top: 2px solid var(--line); background: var(--panel); padding: 14px 24px 18px; }
+.composer-inner { max-width: 860px; margin: 0 auto; }
+.inputbox { border: 2px solid var(--ink); background: var(--paper); padding: 10px 12px; box-shadow: var(--shadow); }
+.inputbox.drag { border-style: dashed; background: color-mix(in srgb, var(--accent) 15%, var(--paper)); }
+.inputbox:focus-within { box-shadow: 4px 4px 0 var(--accent), 4px 4px 0 2px var(--ink); }
+#input { border: 0; background: none; width: 100%; resize: none; max-height: 240px; padding: 4px 2px; outline: none; font-size: 15px; box-shadow: none; }
+.thumbs { display: flex; gap: 10px; flex-wrap: wrap; }
+.thumb { position: relative; }
+.thumb img { width: 64px; height: 64px; object-fit: cover; border: 2px solid var(--ink); }
+.thumb button { position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; border: 2px solid var(--ink); background: var(--accent); color: var(--accent-ink); cursor: pointer; font: 800 12px/14px var(--mono); padding: 0; }
+.bar { display: flex; gap: 6px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.icon-btn { background: none; border: 2px solid transparent; cursor: pointer; color: var(--muted); padding: 4px 8px; font: 700 10.5px/1.2 var(--mono); text-transform: uppercase; letter-spacing: .1em; }
+.icon-btn:hover { border-color: var(--line); color: var(--text); }
+.icon-btn.on { color: var(--accent-ink); background: var(--accent); border-color: var(--ink); }
+#skillPick { width: auto; padding: 3px 6px; font: 600 11px/1.2 var(--mono); border-width: 2px; }
+#status { font: 700 10.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--warn); }
+
+.provider-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.provider-head input { font: 700 14px/1.2 var(--mono); max-width: 220px; }
+.skill { display: flex; gap: 12px; align-items: start; }
+.skill .info { flex: 1; min-width: 0; }
+.skill .name { font: 800 13px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .06em; }
+.skill .name::before { content: "✦ "; color: var(--magenta); }
+.skill .desc { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.skill .src { color: var(--muted); font: 11px/1.4 var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 6px; }
+.toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--accent); color: var(--accent-ink); border: 2px solid #000; box-shadow: 4px 4px 0 #000; padding: 9px 16px; font: 700 12px/1.3 var(--mono); opacity: 0; transition: opacity .15s; pointer-events: none; z-index: 10; max-width: 90vw; }
+.toast.show { opacity: 1; }
+.toast.bad { background: var(--err); color: #fff; }
+dialog { border: 2px solid var(--ink); background: var(--panel); color: var(--text); max-width: 780px; width: 92vw; padding: 22px; box-shadow: 8px 8px 0 var(--ink); }
+dialog::backdrop { background: rgba(0,0,0,.5); }
+dialog h2 { font-size: 22px; }
+dialog pre { white-space: pre-wrap; background: var(--code); border: 2px solid var(--line); padding: 12px; max-height: 60vh; overflow: auto; }
+.examples code { cursor: pointer; border-bottom: 2px solid var(--soft); }
+.examples code:hover { border-color: var(--accent); }
+.voice-now { background: var(--paper); border: 2px dashed var(--line); padding: 10px 12px; margin: 14px 0 0; font-size: 13px; }
+.voice-now b { color: var(--magenta); font-family: var(--mono); }
+.spec { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(140px, 1.3fr) minmax(140px, 1.3fr) minmax(120px, 1fr); gap: 10px; align-items: end; }
+.spec .field { min-width: 0; }
+.pin { display: grid; grid-template-columns: minmax(150px, 1fr) 4fr auto; gap: 10px; align-items: end; padding: 12px 0; border-top: 2px dashed var(--soft); }
+.tool-card .mono { font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .rail { flex-direction: row; align-items: center; padding: 10px 16px; border-right: 0; border-bottom: 2px solid var(--line); gap: 12px; overflow-x: auto; }
+  .mark .word, .rail-foot, nav button .lbl { display: none; }
+  nav { flex-direction: row; }
+  .strip, #messages, #composer, .page { padding-left: 16px; padding-right: 16px; }
+  .chip select { max-width: 150px; }
+  .msg { grid-template-columns: 1fr; gap: 6px; }
+  .msg::before { width: 52px; }
+  .indent { margin-left: 0; }
+  .spec { grid-template-columns: 1fr 1fr; }
+  .pin { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+<aside class="rail">
+  <div class="mark"><span class="glyph">ASG</span><span class="word">signal<br>console</span></div>
+  <nav id="nav">
+    <button data-view="chat" class="active"><span class="ico">▤</span><span class="lbl">Chat</span></button>
+    <button data-view="providers"><span class="ico">⌁</span><span class="lbl">Providers</span></button>
+    <button data-view="settings"><span class="ico">◎</span><span class="lbl">Settings</span></button>
+    <button data-view="skills"><span class="ico">✦</span><span class="lbl">Skills</span></button>
+    <button data-view="tools"><span class="ico">◆</span><span class="lbl">Tools</span></button>
+  </nav>
+  <div class="rail-foot"><span class="live">● link</span> 127.0.0.1<br>local only</div>
+</aside>
+<div class="stage">
+<header class="strip">
+  <div class="crumb"><span>ASG /</span> <b id="crumb">Chat</b></div>
+  <div class="spacer"></div>
+  <label class="chip">via<select id="quickProvider" title="Active provider"></select></label>
+  <label class="chip">model<select id="quickModel" title="Model"></select></label>
+  <span class="chip voice" title="Who reads replies aloud">🔊 <b id="voiceChip">…</b></span>
+</header>
+
+<main>
+  <!-- CHAT -->
+  <section class="view active" id="chat">
+    <div id="messages"><div class="msgs" id="msgs"></div></div>
+    <div id="composer">
+      <div class="composer-inner">
+        <div class="inputbox" id="inputbox">
+          <div class="thumbs" id="thumbs"></div>
+          <textarea id="input" rows="1" placeholder="Talk to ASG… paste or drop images · Enter transmits · Shift+Enter newline"></textarea>
+          <div class="bar">
+            <button class="icon-btn" id="attach" title="Attach image">▣ Image</button>
+            <input type="file" id="file" accept="image/*" multiple hidden>
+            <select id="skillPick" title="Run with a skill"><option value="">No skill</option></select>
+            <button class="icon-btn" id="voiceBtn" title="Speak replies aloud">🔈 Voice off</button>
+            <button class="icon-btn" id="newChat" title="New conversation">↺ New</button>
+            <div class="spacer"></div>
+            <span class="muted" id="status" style="font-size:12px"></span>
+            <button class="btn" id="stop" hidden>Stop</button>
+            <button class="btn primary" id="send">Transmit ⏎</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROVIDERS -->
+  <section class="view" id="providers">
+    <div class="page"><div class="page-inner">
+      <h2>Providers</h2>
+      <p class="sub">Model backends. Switch between local Ollama and hosted APIs — any OpenAI-compatible endpoint (OpenRouter, Groq, LM Studio, vLLM…) works with type <code>openai</code>.</p>
+      <div id="providerList"></div>
+      <div class="row" style="margin-top:8px">
+        <select id="preset" style="max-width:260px">
+          <option value="">Add provider from preset…</option>
+          <option value="ollama">Ollama (local)</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="openai">OpenAI</option>
+          <option value="openrouter">OpenRouter</option>
+          <option value="groq">Groq</option>
+          <option value="lmstudio">LM Studio</option>
+          <option value="ollama-openai">Ollama (OpenAI-compatible /v1)</option>
+          <option value="custom">Custom OpenAI-compatible</option>
+        </select>
+        <div class="spacer"></div>
+        <button class="btn primary" id="saveProviders">Save providers</button>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="settings">
+    <div class="page"><div class="page-inner">
+      <h2>Settings</h2>
+      <p class="sub">Saved to <span class="mono" id="cfgPath"></span>. Changes apply to the terminal session immediately.</p>
+      <div class="card">
+        <h3 style="margin-top:0">Behaviour</h3>
+        <div class="field"><label>Extra system prompt</label><textarea id="sysPrompt" rows="4" placeholder="Anything you want the model to always know or do"></textarea></div>
+        <div class="row" style="margin-top:12px">
+          <div class="field"><label>Max tool rounds per turn</label><input type="number" id="maxRounds" min="1"></div>
+          <div class="field"><label>Temperature (blank = model default)</label><input type="number" id="temperature" step="0.1" min="0" max="2"></div>
+          <div class="field"><label>Dashboard port</label><input type="number" id="port"></div>
+        </div>
+        <label class="toggle" style="margin-top:14px"><input type="checkbox" id="autoApprove"> Auto-approve tool calls (bash, file writes, web fetch) without asking</label>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Audio output</h3>
+        <label class="toggle"><input type="checkbox" id="audioEnabled"> Speak replies aloud in the terminal</label>
+        <p class="voice-now">Now speaking with <b id="voiceNow">…</b> <span class="muted" id="voiceWhy"></span></p>
+
+        <h4>Who speaks?</h4>
+        <p class="muted hint"><b>Auto</b> lets the current chat model speak when Ollama says it can (the <code>speech</code> capability), otherwise the fallback below is used. Or pick a specific voice for everything.</p>
+        <div id="voiceMain"></div>
+        <div class="row" style="margin-top:10px"><div class="field" style="max-width:220px"><label>Rate (words/min, system voice only)</label><input type="number" id="audioRate" placeholder="default"></div></div>
+
+        <h4>Fallback</h4>
+        <p class="muted hint">Used by Auto when the chat model can't speak, e.g. gemma4 → <code>ollama phonon (Juniper)</code>.</p>
+        <div id="voiceFallback"></div>
+
+        <h4>Per-model voices</h4>
+        <p class="muted hint">Pin a voice to a specific chat model. A pin beats both the default and the fallback.</p>
+        <div id="voicePins"></div>
+        <div class="row" style="margin-top:8px"><button class="btn small" id="addPin">＋ Pin a voice to a model</button></div>
+
+        <div class="row" style="margin-top:16px"><button class="btn" id="testVoice">▶ Save &amp; test voice</button></div>
+      </div>
+      <div class="row"><div class="spacer"></div><button class="btn primary" id="saveSettings">Save settings</button></div>
+    </div></div>
+  </section>
+
+  <!-- SKILLS -->
+  <section class="view" id="skills">
+    <div class="page"><div class="page-inner">
+      <h2>Skills</h2>
+      <p class="sub">Skills are folders with a <code>SKILL.md</code>. The model sees each skill's description and loads the full instructions when relevant. Installed in <span class="mono" id="skillsDir"></span>.</p>
+      <div class="card">
+        <h3 style="margin-top:0">Import</h3>
+        <div class="row">
+          <div class="field" style="flex:3"><label>Source</label><input type="text" id="skillSrc" placeholder="github:owner/repo/path · https://github.com/… · https://…/SKILL.md · /local/folder"></div>
+          <button class="btn primary" id="importSkill">Import</button>
+        </div>
+        <p class="muted examples" style="font-size:12.5px;margin:10px 0 0">Examples: <code>github:anthropics/skills/skills/pdf</code> · <code>https://github.com/anthropics/skills/tree/main/skills/docx</code> · <code>~/my-skills</code>. Whole repos import every SKILL.md they contain.</p>
+      </div>
+      <div class="card">
+        <h3 style="margin-top:0">Upload</h3>
+        <div class="row">
+          <div class="field"><label>SKILL.md or .md file</label><input type="file" id="skillFile" accept=".md,text/markdown,text/plain"></div>
+        </div>
+      </div>
+      <details class="card">
+        <summary style="cursor:pointer;font-weight:600">Create a skill</summary>
+        <div class="row" style="margin-top:12px">
+          <div class="field"><label>Name</label><input type="text" id="newSkillName" placeholder="release-notes"></div>
+          <div class="field" style="flex:2"><label>Description (when should the model use it?)</label><input type="text" id="newSkillDesc"></div>
+        </div>
+        <div class="field" style="margin-top:12px"><label>Instructions</label><textarea id="newSkillBody" rows="8"></textarea></div>
+        <div class="row" style="margin-top:12px"><div class="spacer"></div><button class="btn primary" id="createSkill">Create</button></div>
+      </details>
+      <h3>Installed</h3>
+      <div id="skillList"></div>
+    </div></div>
+  </section>
+
+  <!-- TOOLS -->
+  <section class="view" id="tools">
+    <div class="page"><div class="page-inner">
+      <h2>Tools</h2>
+      <p class="sub">Functions the model can call. Tools marked <span class="pill warn">asks</span> need your approval unless auto-approve is on.</p>
+      <div id="toolList"></div>
+    </div></div>
+  </section>
+</main>
+</div>
+</div>
+
+<dialog id="dlg"><h2 id="dlgTitle"></h2><p class="muted mono" id="dlgSub" style="font-size:12px"></p><pre id="dlgBody"></pre><div class="row"><div class="spacer"></div><button class="btn" onclick="dlg.close()">Close</button></div></dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+// ---------- auth ----------
+const hashTok = new URLSearchParams(location.hash.slice(1)).get("token");
+if (hashTok) { try { sessionStorage.setItem("asg-token", hashTok); } catch {} history.replaceState(null, "", location.pathname); }
+let TOKEN = hashTok;
+try { TOKEN = TOKEN || sessionStorage.getItem("asg-token"); } catch {}
+const SESSION = "web";
+// Reopening /dashboard after a restart lands here with a fresh token as a
+// same-page hash change; reload so the new token is picked up.
+addEventListener("hashchange", () => { if (location.hash.includes("token=")) location.reload(); });
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function api(method, path, body) {
+  const res = await fetch(path, { method, headers: { "Content-Type": "application/json", "X-ASG-Token": TOKEN || "" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { const j = await res.json(); msg = j.error || msg; } catch { msg = (await res.text().catch(() => "")) || msg; }
+    throw new Error(msg);
+  }
+  const ct = res.headers.get("content-type") || "";
+  return ct.includes("json") ? res.json() : res;
+}
+
+function toast(msg, bad) {
+  const t = $("toast"); t.textContent = msg; t.className = "toast show" + (bad ? " bad" : "");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.className = "toast", 2600);
+}
+
+// ---------- state ----------
+let STATE = null;
+let CFG = null;
+
+async function load() {
+  STATE = await api("GET", "/api/state");
+  CFG = structuredClone(STATE.config);
+  renderQuick(); renderProviders(); renderSettings(); renderSkills(); renderTools();
+}
+
+// ---------- nav ----------
+$("nav").addEventListener("click", (e) => {
+  const btn = e.target.closest("button"); const v = btn?.dataset.view; if (!v) return;
+  $("crumb").textContent = btn.querySelector(".lbl").textContent;
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.view === v));
+  document.querySelectorAll(".view").forEach(s => s.classList.toggle("active", s.id === v));
+  try { localStorage.setItem("asg-view", v); } catch {}
+});
+try { const v = localStorage.getItem("asg-view"); if (v) document.querySelector(`nav button[data-view="${v}"]`)?.click(); } catch {}
+
+// ---------- quick switcher ----------
+async function renderQuick() {
+  const qp = $("quickProvider");
+  qp.innerHTML = Object.keys(STATE.config.providers).sort().map(n => `<option ${n === STATE.config.active_provider ? "selected" : ""}>${esc(n)}</option>`).join("");
+  const cur = STATE.config.providers[STATE.config.active_provider];
+  const qm = $("quickModel");
+  qm.innerHTML = `<option>${esc(cur?.model)}</option>`;
+  try {
+    const { models } = await api("GET", "/api/models?provider=" + encodeURIComponent(STATE.config.active_provider));
+    const list = models.includes(cur.model) ? models : [cur.model, ...models];
+    qm.innerHTML = list.map(m => `<option ${m === cur.model ? "selected" : ""}>${esc(m)}</option>`).join("");
+  } catch {}
+}
+async function saveConfig(next, quiet) {
+  STATE = await api("PUT", "/api/config", next);
+  CFG = structuredClone(STATE.config);
+  renderQuick(); renderProviders(); renderSettings();
+  speechModelsP = null;
+  if (!quiet) toast("Saved");
+}
+$("quickProvider").onchange = async (e) => {
+  const next = structuredClone(STATE.config); next.active_provider = e.target.value;
+  await saveConfig(next, true).catch(err => toast(err.message, true));
+  toast("Provider → " + e.target.value);
+};
+$("quickModel").onchange = async (e) => {
+  const next = structuredClone(STATE.config); next.providers[next.active_provider].model = e.target.value;
+  await saveConfig(next, true).catch(err => toast(err.message, true));
+  toast("Model → " + e.target.value);
+};
+
+// ---------- providers ----------
+const PRESETS = {
+  "ollama": { name: "ollama", type: "ollama", base_url: "http://localhost:11434", model: "llama3.1:8b" },
+  "anthropic": { name: "anthropic", type: "anthropic", base_url: "https://api.anthropic.com", model: "claude-sonnet-5-5" },
+  "openai": { name: "openai", type: "openai", base_url: "https://api.openai.com/v1", model: "gpt-5" },
+  "openrouter": { name: "openrouter", type: "openai", base_url: "https://openrouter.ai/api/v1", model: "" },
+  "groq": { name: "groq", type: "openai", base_url: "https://api.groq.com/openai/v1", model: "" },
+  "lmstudio": { name: "lmstudio", type: "openai", base_url: "http://localhost:1234/v1", model: "" },
+  "ollama-openai": { name: "ollama-v1", type: "openai", base_url: "http://localhost:11434/v1", model: "" },
+  "custom": { name: "custom", type: "openai", base_url: "https://", model: "" },
+};
+$("preset").onchange = (e) => {
+  const p = PRESETS[e.target.value]; e.target.value = ""; if (!p) return;
+  let name = p.name, i = 2; while (CFG.providers[name]) name = p.name + "-" + i++;
+  CFG.providers[name] = { type: p.type, base_url: p.base_url, model: p.model, api_key: "" };
+  renderProviders(); toast("Added " + name + " — fill in the details and save");
+};
+
+function renderProviders() {
+  const names = Object.keys(CFG.providers).sort();
+  $("providerList").innerHTML = names.map(n => {
+    const p = CFG.providers[n]; const active = n === CFG.active_provider;
+    return `<div class="card" data-name="${esc(n)}">
+      <div class="provider-head">
+        <input type="text" class="p-name" value="${esc(n)}" title="Name">
+        ${active ? '<span class="pill on">● active</span>' : `<button class="btn small p-use">Use</button>`}
+        <div class="spacer"></div>
+        <span class="muted p-status" style="font-size:12px"></span>
+        <button class="btn small p-test">Test</button>
+        <button class="btn small danger p-del">Remove</button>
+      </div>
+      <div class="row">
+        <div class="field" style="max-width:150px"><label>Type</label>
+          <select class="p-type">${["ollama","openai","anthropic"].map(t => `<option ${t === p.type ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+        <div class="field" style="flex:2"><label>Base URL</label><input type="text" class="p-url" value="${esc(p.base_url)}"></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <div class="field"><label>API key ${p.type === "ollama" ? "(optional)" : ""}</label><input type="password" class="p-key" value="${esc(p.api_key)}" placeholder="${p.type === "ollama" ? "not needed for local Ollama" : "sk-…"}" autocomplete="off"></div>
+        <div class="field"><label>Model</label><input type="text" class="p-model" value="${esc(p.model)}" list="models-${esc(n)}"><datalist id="models-${esc(n)}"></datalist></div>
+      </div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll("#providerList .card").forEach(card => {
+    const n = card.dataset.name;
+    const sync = () => {
+      const p = CFG.providers[n];
+      p.type = card.querySelector(".p-type").value; p.base_url = card.querySelector(".p-url").value.trim();
+      p.api_key = card.querySelector(".p-key").value.trim(); p.model = card.querySelector(".p-model").value.trim();
+    };
+    card.querySelectorAll("input:not(.p-name), select").forEach(el => el.addEventListener("input", sync));
+    card.querySelector(".p-name").addEventListener("change", (e) => {
+      const nn = e.target.value.trim(); if (!nn || nn === n || CFG.providers[nn]) { e.target.value = n; return; }
+      CFG.providers[nn] = CFG.providers[n]; delete CFG.providers[n];
+      if (CFG.active_provider === n) CFG.active_provider = nn;
+      for (const sp of [CFG.audio, CFG.audio.fallback || {}, ...Object.values(CFG.audio.per_model || {})]) if (sp.provider === n) sp.provider = nn;
+      renderProviders();
+    });
+    card.querySelector(".p-use")?.addEventListener("click", () => { CFG.active_provider = n; renderProviders(); });
+    card.querySelector(".p-del").addEventListener("click", () => {
+      if (Object.keys(CFG.providers).length === 1) return toast("Keep at least one provider", true);
+      delete CFG.providers[n]; if (CFG.active_provider === n) CFG.active_provider = Object.keys(CFG.providers)[0];
+      renderProviders();
+    });
+    card.querySelector(".p-test").addEventListener("click", async () => {
+      const st = card.querySelector(".p-status"); st.textContent = "saving & testing…"; st.className = "muted p-status";
+      try {
+        await saveConfig(CFG, true);
+        const { models } = await api("GET", "/api/models?provider=" + encodeURIComponent(n));
+        const c = document.querySelector(`#providerList .card[data-name="${CSS.escape(n)}"]`);
+        c.querySelector("datalist").innerHTML = models.map(m => `<option value="${esc(m)}">`).join("");
+        const s2 = c.querySelector(".p-status"); s2.textContent = `✓ connected · ${models.length} models`; s2.className = "ok p-status";
+      } catch (err) {
+        const c = document.querySelector(`#providerList .card[data-name="${CSS.escape(n)}"]`) || card;
+        const s2 = c.querySelector(".p-status"); s2.textContent = "✗ " + err.message.slice(0, 90); s2.className = "err p-status"; s2.title = err.message;
+      }
+    });
+  });
+}
+$("saveProviders").onclick = () => saveConfig(CFG).catch(e => toast(e.message, true));
+
+// ---------- settings ----------
+function renderSettings() {
+  $("cfgPath").textContent = STATE.config_path;
+  $("sysPrompt").value = CFG.system_prompt || "";
+  $("maxRounds").value = CFG.max_tool_rounds;
+  $("temperature").value = CFG.temperature ?? "";
+  $("port").value = CFG.dashboard_port;
+  $("autoApprove").checked = !!CFG.auto_approve;
+  $("audioEnabled").checked = !!CFG.audio.enabled;
+  $("audioRate").value = CFG.audio.rate || "";
+  PINS = Object.entries(CFG.audio.per_model || {}).map(([model, spec]) => ({ model, spec: { ...spec } }));
+  renderVoices();
+  refreshVoiceNow();
+}
+function readSettings() {
+  CFG.system_prompt = $("sysPrompt").value;
+  CFG.max_tool_rounds = parseInt($("maxRounds").value) || 25;
+  const t = $("temperature").value; CFG.temperature = t === "" ? null : parseFloat(t);
+  CFG.dashboard_port = parseInt($("port").value) || 7777;
+  CFG.auto_approve = $("autoApprove").checked;
+  CFG.audio.enabled = $("audioEnabled").checked;
+  CFG.audio.rate = parseInt($("audioRate").value) || 0;
+  const per = {}; for (const p of PINS) if (p.model.trim()) per[p.model.trim()] = p.spec;
+  CFG.audio.per_model = per;
+}
+$("saveSettings").onclick = () => { readSettings(); saveConfig(CFG).catch(e => toast(e.message, true)); };
+$("testVoice").onclick = async () => {
+  readSettings();
+  try { await saveConfig(CFG, true); await speak("Hello! This is how I will sound when reading replies."); }
+  catch (e) { toast(e.message, true); }
+};
+
+// ---------- voices ----------
+let PINS = [];
+let speechModelsP = null;
+const voiceCache = {};
+const OPENAI_VOICES = ["alloy","ash","ballad","coral","echo","fable","nova","onyx","sage","shimmer","verse"];
+function speechModels() {
+  speechModelsP = speechModelsP || api("GET", "/api/speech-models").then(r => r.models || []).catch(() => []);
+  return speechModelsP;
+}
+function ollamaVoices(model) {
+  if (!model) return Promise.resolve([]);
+  voiceCache[model] = voiceCache[model] || api("GET", "/api/voices?model=" + encodeURIComponent(model)).then(r => r.voices || []).catch(() => []);
+  return voiceCache[model];
+}
+let dlSeq = 0;
+// specEditor renders engine/model/voice/provider controls bound to spec.
+function specEditor(spec, allowAuto) {
+  const el = document.createElement("div"); el.className = "spec";
+  const id = "dl" + (++dlSeq);
+  const engines = (allowAuto ? [["auto", "Auto (current model if it can speak)"]] : [])
+    .concat([["ollama", "Ollama speech model"], ["openai", "OpenAI TTS"], ["system", "System voice"]]);
+  const provs = Object.keys(CFG.providers).sort();
+  const draw = () => {
+    const e = spec.engine || (allowAuto ? "auto" : "system");
+    const showModel = e === "ollama" || e === "openai";
+    el.innerHTML = `
+      <div class="field"><label>Engine</label><select class="s-engine">${engines.map(([v, l]) => `<option value="${v}" ${v === e ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+      <div class="field" ${showModel ? "" : "hidden"}><label>Speech model</label><input type="text" class="s-model" list="${id}m" value="${esc(spec.model)}" placeholder="${e === "openai" ? "gpt-4o-mini-tts" : "phonon"}"><datalist id="${id}m"></datalist></div>
+      <div class="field"><label>Voice ${e === "auto" ? "(if the model speaks)" : ""}</label><input type="text" class="s-voice" list="${id}v" value="${esc(spec.voice)}" placeholder="default"><datalist id="${id}v"></datalist></div>
+      <div class="field" ${showModel ? "" : "hidden"}><label>Provider</label><select class="s-prov"><option value="">auto</option>${provs.map(n => `<option ${n === spec.provider ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></div>`;
+    const fillVoices = async () => {
+      let list = [];
+      if (e === "ollama") list = await ollamaVoices(spec.model);
+      else if (e === "openai") list = OPENAI_VOICES;
+      else if (e === "system") list = STATE.voices || [];
+      el.querySelector(`#${id}v`).innerHTML = list.map(v => `<option value="${esc(v)}">`).join("");
+    };
+    if (e === "ollama") speechModels().then(ms => { const d = el.querySelector(`#${id}m`); if (d) d.innerHTML = ms.map(m => `<option value="${esc(m)}">`).join(""); });
+    fillVoices();
+    el.querySelector(".s-engine").onchange = (ev) => { spec.engine = ev.target.value; if (spec.engine !== "ollama" && spec.engine !== "openai") { spec.model = ""; spec.provider = ""; } draw(); };
+    el.querySelector(".s-model").onchange = (ev) => { spec.model = ev.target.value.trim(); fillVoices(); };
+    el.querySelector(".s-voice").oninput = (ev) => { spec.voice = ev.target.value; };
+    el.querySelector(".s-prov").onchange = (ev) => { spec.provider = ev.target.value; };
+  };
+  draw();
+  return el;
+}
+function renderVoices() {
+  const main = { engine: CFG.audio.engine, model: CFG.audio.model, voice: CFG.audio.voice, provider: CFG.audio.provider };
+  // Bind the flattened default spec back onto CFG.audio.
+  const proxy = new Proxy(main, { set(t, k, v) { t[k] = v; CFG.audio[k] = v; return true; } });
+  $("voiceMain").replaceChildren(specEditor(proxy, true));
+  CFG.audio.fallback = CFG.audio.fallback || { engine: "system" };
+  $("voiceFallback").replaceChildren(specEditor(CFG.audio.fallback, false));
+  const models = [...$("quickModel").options].map(o => o.value);
+  $("voicePins").innerHTML = PINS.length ? "" : `<p class="muted hint">No pins yet.</p>`;
+  PINS.forEach((p, i) => {
+    const row = document.createElement("div"); row.className = "pin";
+    row.innerHTML = `<div class="field"><label>Chat model</label><input type="text" value="${esc(p.model)}" list="pinModels${i}"><datalist id="pinModels${i}">${models.map(m => `<option value="${esc(m)}">`).join("")}</datalist></div><div></div><button class="btn small danger">Remove</button>`;
+    row.querySelector("input").oninput = (e) => p.model = e.target.value;
+    row.children[1].replaceWith(specEditor(p.spec, false));
+    row.querySelector("button").onclick = () => { PINS.splice(i, 1); renderVoices(); };
+    $("voicePins").appendChild(row);
+  });
+}
+$("addPin").onclick = () => {
+  PINS.push({ model: STATE.config.providers[STATE.config.active_provider]?.model || "", spec: { engine: "ollama", model: "phonon", voice: "" } });
+  renderVoices();
+};
+async function refreshVoiceNow() {
+  try { const v = await api("GET", "/api/voice"); $("voiceNow").textContent = $("voiceChip").textContent = v.label; $("voiceWhy").textContent = "· " + v.why; $("voiceChip").parentElement.title = "Reads replies aloud — " + v.why; } catch {}
+}
+
+// ---------- skills ----------
+function renderSkills() {
+  $("skillsDir").textContent = STATE.skills_dir;
+  const skills = STATE.skills || [];
+  $("skillPick").innerHTML = `<option value="">No skill</option>` + skills.map(s => `<option value="${esc(s.name)}">✦ ${esc(s.name)}</option>`).join("");
+  $("skillList").innerHTML = skills.length ? skills.map(s => `<div class="card skill">
+      <div class="info"><div class="name">${esc(s.name)}</div><div class="desc">${esc(s.description || "No description")}</div>
+      ${s.source ? `<div class="src" title="${esc(s.source)}">from ${esc(s.source)}</div>` : ""}</div>
+      <button class="btn small" data-view-skill="${esc(s.name)}">View</button>
+      <button class="btn small danger" data-del-skill="${esc(s.name)}">Remove</button></div>`).join("")
+    : `<p class="muted">No skills installed yet.</p>`;
+}
+$("skillList").addEventListener("click", async (e) => {
+  const v = e.target.dataset.viewSkill, d = e.target.dataset.delSkill;
+  try {
+    if (v) {
+      const s = await api("GET", "/api/skills/" + encodeURIComponent(v));
+      $("dlgTitle").textContent = s.name; $("dlgSub").textContent = s.dir; $("dlgBody").textContent = s.body; $("dlg").showModal();
+    }
+    if (d) {
+      e.target.disabled = true;
+      const r = await api("DELETE", "/api/skills/" + encodeURIComponent(d)); STATE.skills = r.skills; renderSkills(); toast("Removed " + d);
+    }
+  } catch (err) { toast(err.message, true); e.target.disabled = false; }
+});
+document.querySelectorAll(".examples code").forEach(c => c.onclick = () => { $("skillSrc").value = c.textContent; $("skillSrc").focus(); });
+$("importSkill").onclick = async () => {
+  const src = $("skillSrc").value.trim(); if (!src) return;
+  const b = $("importSkill"); b.disabled = true; b.textContent = "Importing…";
+  try {
+    const r = await api("POST", "/api/skills/import", { source: src });
+    STATE.skills = r.skills; renderSkills(); $("skillSrc").value = "";
+    toast("Imported " + r.imported.map(s => s.name).join(", "));
+  } catch (err) { toast(err.message, true); }
+  b.disabled = false; b.textContent = "Import";
+};
+$("skillFile").onchange = async (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const text = await f.text();
+  const m = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+  let name = f.name.replace(/\.md$/i, ""), desc = "", body = text;
+  if (m) {
+    body = m[2];
+    const nm = m[1].match(/^name:\s*(.+)$/m); if (nm) name = nm[1].trim().replace(/^["']|["']$/g, "");
+    const dm = m[1].match(/^description:\s*(.+)$/m); if (dm) desc = dm[1].trim().replace(/^["']|["']$/g, "");
+  }
+  if (/^skill$/i.test(name)) name = prompt("Name for this skill?") || "";
+  try {
+    const r = await api("POST", "/api/skills", { name, description: desc, body: body.trim() });
+    STATE.skills = r.skills; renderSkills(); toast("Uploaded " + name);
+  } catch (err) { toast(err.message, true); }
+  e.target.value = "";
+};
+$("createSkill").onclick = async () => {
+  try {
+    const r = await api("POST", "/api/skills", { name: $("newSkillName").value, description: $("newSkillDesc").value, body: $("newSkillBody").value });
+    STATE.skills = r.skills; renderSkills(); toast("Created");
+    $("newSkillName").value = $("newSkillDesc").value = $("newSkillBody").value = "";
+  } catch (err) { toast(err.message, true); }
+};
+
+// ---------- tools ----------
+function renderTools() {
+  $("toolList").innerHTML = STATE.tools.map(t => `<div class="card tool-card"><div class="row" style="align-items:center">
+    <span class="mono" style="font-weight:600">${esc(t.name)}</span>${t.needs_approval ? '<span class="pill warn">asks</span>' : '<span class="pill">read-only</span>'}</div>
+    <div class="muted" style="margin-top:4px">${esc(t.description)}</div></div>`).join("") +
+    (STATE.skills.length ? `<div class="card"><div class="row"><span class="mono" style="font-weight:600">use_skill</span><span class="pill">read-only</span></div><div class="muted" style="margin-top:4px">Load the full instructions of an installed skill by name.</div></div>` : "");
+}
+
+// ---------- markdown ----------
+function md(src) {
+  const blocks = [];
+  src = src.replace(/```(\w*)\n?([\s\S]*?)(```|$)/g, (_, lang, code) => { blocks.push(`<pre><code>${esc(code.replace(/\n$/, ""))}</code></pre>`); return `\u0000${blocks.length - 1}\u0000`; });
+  const inline = (s) => esc(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const out = []; let list = null;
+  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const line of src.split("\n")) {
+    const blk = line.match(/^\u0000(\d+)\u0000$/);
+    if (blk) { closeList(); out.push(blocks[+blk[1]]); continue; }
+    let m;
+    if ((m = line.match(/^(#{1,4})\s+(.*)/))) { closeList(); out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`); }
+    else if ((m = line.match(/^\s*[-*]\s+(.*)/))) { if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if ((m = line.match(/^\s*\d+[.)]\s+(.*)/))) { if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(m[1])}</li>`); }
+    else if (line.trim() === "") { closeList(); }
+    else { closeList(); out.push(`<p>${inline(line)}</p>`); }
+  }
+  closeList();
+  return out.join("").replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[+i]);
+}
+
+// ---------- chat ----------
+const msgs = $("msgs");
+let pendingImages = [];
+let busy = false;
+let voiceOn = false;
+try { voiceOn = localStorage.getItem("asg-voice") === "1"; } catch {}
+
+function renderVoiceBtn() { $("voiceBtn").textContent = voiceOn ? "◉ Voice on" : "○ Voice off"; $("voiceBtn").classList.toggle("on", voiceOn); }
+renderVoiceBtn();
+$("voiceBtn").onclick = () => { voiceOn = !voiceOn; renderVoiceBtn(); try { localStorage.setItem("asg-voice", voiceOn ? "1" : "0"); } catch {} if (!voiceOn) stopSpeech(); };
+
+let audioEl = null;
+let speakGen = 0;
+function stopSpeech() { speakGen++; try { speechSynthesis.cancel(); } catch {} if (audioEl) { audioEl.pause(); audioEl = null; } }
+// chunks splits text at sentence ends (first chunk short so audio starts fast).
+function chunks(text, max = 400) {
+  const out = []; let cur = "", limit = max / 2;
+  for (const s of text.match(/[^.!?…]+[.!?…]+["')\]]*\s*|[^.!?…]+$/g) || []) {
+    if (cur && cur.length + s.length > limit) { out.push(cur.trim()); cur = ""; limit = max; }
+    cur += s;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+const cleanSpeech = (t) => t.replace(/```[\s\S]*?```/g, " code omitted ").replace(/`([^`]*)`/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_#>|~]+/g, " ").replace(/\s+/g, " ").trim();
+async function ttsChunk(text) {
+  const res = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json", "X-ASG-Token": TOKEN || "" }, body: JSON.stringify({ text }) });
+  if (!res.ok) { let m = res.statusText; try { m = (await res.json()).error; } catch {} throw new Error(m); }
+  if ((res.headers.get("content-type") || "").includes("json")) return { system: await res.json() };
+  return { blob: await res.blob() };
+}
+// speak reads text with the voice the server resolves for the current model.
+async function speak(text) {
+  stopSpeech();
+  const gen = speakGen;
+  const parts = chunks(cleanSpeech(text));
+  if (!parts.length) return;
+  let next = ttsChunk(parts[0]);
+  for (let i = 0; i < parts.length; i++) {
+    const got = await next;
+    if (gen !== speakGen) return;
+    if (got.system) { // system voice: speak in the browser, where you are
+      const u = new SpeechSynthesisUtterance(parts.join(" "));
+      const v = speechSynthesis.getVoices().find(v => v.name === got.system.voice); if (v) u.voice = v;
+      speechSynthesis.speak(u); return;
+    }
+    if (i + 1 < parts.length) next = ttsChunk(parts[i + 1]);
+    audioEl = new Audio(URL.createObjectURL(got.blob));
+    await new Promise((resolve) => { audioEl.onended = audioEl.onerror = resolve; audioEl.play().catch(resolve); });
+    if (gen !== speakGen) return;
+  }
+}
+
+function showEmpty() {
+  if (msgs.children.length) return;
+  msgs.innerHTML = `<div class="empty"><div class="big"><span>ASG</span></div>
+    <div class="tag">signal console · ${esc(STATE?.config.providers[STATE.config.active_provider]?.model || "")}</div>
+    <div class="suggest">${["Explain this project's structure", "Find TODOs in this repo", "What's in this screenshot?"].map(t => `<button>${t}</button>`).join("")}</div></div>`;
+  msgs.querySelectorAll(".suggest button").forEach(b => b.onclick = () => { $("input").value = b.textContent; autosize(); $("input").focus(); });
+}
+function clearEmpty() { msgs.querySelector(".empty")?.remove(); }
+function scrollDown() { const m = $("messages"); if (m.scrollHeight - m.scrollTop - m.clientHeight < 200) m.scrollTop = m.scrollHeight; }
+
+function addUser(text, images) {
+  clearEmpty();
+  const d = document.createElement("div"); d.className = "msg user";
+  d.innerHTML = `<div class="body">${images.map(i => `<img src="data:${i.media_type};base64,${i.data}">`).join("")}${esc(text)}</div>`;
+  msgs.appendChild(d); $("messages").scrollTop = $("messages").scrollHeight;
+}
+// addEl appends a transcript entry. "msg …" entries get a labelled gutter
+// (YOU / ASG / NOTE / ERR) with content in .body; others are indented cards.
+function addEl(cls, html) {
+  clearEmpty(); const d = document.createElement("div");
+  if (cls.startsWith("msg")) { d.className = cls; d.innerHTML = `<div class="body">${html}</div>`; d.body = d.firstChild; }
+  else { d.className = cls + " indent"; d.innerHTML = html; d.body = d; }
+  msgs.appendChild(d); scrollDown(); return d;
+}
+
+function toolCard(name, summary, id) {
+  const d = document.createElement("details"); d.className = "tool indent"; d.dataset.id = id;
+  d.innerHTML = `<summary><span class="dot"></span><span class="tname">${esc(name)}</span><span class="tsum">${esc(summary)}</span></summary><pre>running…</pre>`;
+  clearEmpty(); msgs.appendChild(d); scrollDown(); return d;
+}
+
+function argsPreview(name, args) {
+  if (!args) return "";
+  if (name === "bash") return args.command;
+  if (name === "write_file") return `${args.path}\n\n${(args.content || "").slice(0, 2000)}`;
+  if (name === "edit_file") return `${args.path}\n\n- ${(args.old_string || "").slice(0, 1000)}\n+ ${(args.new_string || "").slice(0, 1000)}`;
+  return JSON.stringify(args, null, 2);
+}
+
+async function send() {
+  const text = $("input").value.trim();
+  if (busy || (!text && !pendingImages.length)) return;
+  const images = pendingImages; pendingImages = []; renderThumbs();
+  const skill = $("skillPick").value;
+  $("input").value = ""; autosize();
+  addUser(skill ? `✦ ${skill}\n${text}` : text, images);
+  setBusy(true);
+
+  let cur = null, curText = "";
+  const tools = {};
+  const ensureText = () => { if (!cur) { cur = addEl("msg assistant typing", ""); curText = ""; } };
+  let finalText = "";
+  try {
+    const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json", "X-ASG-Token": TOKEN || "" },
+      body: JSON.stringify({ session_id: SESSION, text, skill, images }) });
+    if (!res.ok) { const t = await res.text(); let m = t || res.statusText; try { m = JSON.parse(t).error; } catch {} throw new Error(m); }
+    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = "";
+    while (true) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+        const line = chunk.split("\n").find(l => l.startsWith("data:")); if (!line) continue;
+        const ev = JSON.parse(line.slice(5));
+        switch (ev.type) {
+          case "text": ensureText(); curText += ev.text; cur.body.innerHTML = md(curText); scrollDown(); break;
+          case "tool_start":
+            if (cur) { cur.classList.remove("typing"); cur = null; }
+            tools[ev.id] = tools[ev.id] || toolCard(ev.name, ev.summary, ev.id); break;
+          case "tool_end": {
+            if (cur) { cur.classList.remove("typing"); cur = null; }
+            const c = tools[ev.id] || toolCard(ev.name, "", ev.id);
+            c.classList.add(ev.error ? "failed" : "done"); c.querySelector("pre").textContent = ev.result; break;
+          }
+          case "approval": {
+            if (cur) { cur.classList.remove("typing"); cur = null; }
+            const a = addEl("approval", `<div class="gate">▛ GATE · ${esc(ev.name.toUpperCase())} REQUESTS PERMISSION</div><pre>${esc(argsPreview(ev.name, ev.args) || ev.summary)}</pre>
+              <div class="row"><button class="btn primary" data-d="allow">Run</button><button class="btn" data-d="always">Always ${esc(ev.name)}</button><button class="btn danger" data-d="deny">Block</button></div>`);
+            a.querySelectorAll("button").forEach(b => b.onclick = async () => {
+              a.querySelectorAll("button").forEach(x => x.disabled = true);
+              try { await api("POST", "/api/approve", { session_id: SESSION, id: ev.id, decision: b.dataset.d }); a.querySelector(".row").innerHTML = `<span class="pill ${b.dataset.d === "deny" ? "warn" : "on"}">${b.dataset.d === "deny" ? "blocked" : "allowed"}</span>`; }
+              catch (err) { toast(err.message, true); }
+            });
+            break;
+          }
+          case "notice": addEl("msg notice", esc(ev.text)); break;
+          case "error": addEl("msg error", esc(ev.text)); break;
+          case "done": {
+            finalText = ev.text;
+            if (cur) cur.classList.remove("typing");
+            const meta = addEl("meta", `<span>${ev.seconds.toFixed(1)}s · ${ev.input_tokens}↑ ${ev.output_tokens}↓</span><button>Read aloud</button><button>Copy</button>`);
+            const [speakB, copyB] = meta.querySelectorAll("button");
+            speakB.onclick = () => speak(ev.text).catch(e => toast(e.message, true));
+            copyB.onclick = () => navigator.clipboard.writeText(ev.text).then(() => toast("Copied"));
+            break;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    if (err.name !== "AbortError") addEl("msg error", esc(err.message));
+  } finally {
+    if (cur) cur.classList.remove("typing");
+    setBusy(false);
+    if (voiceOn && finalText) speak(finalText).catch(e => toast(e.message, true));
+  }
+}
+
+function setBusy(b) {
+  busy = b; $("send").disabled = b; $("stop").hidden = !b; $("status").textContent = b ? "working…" : "";
+}
+$("send").onclick = send;
+$("stop").onclick = () => { api("POST", "/api/stop", { session_id: SESSION }).catch(() => {}); stopSpeech(); };
+$("newChat").onclick = async () => { if (busy) return; await api("POST", "/api/clear", { session_id: SESSION }); msgs.innerHTML = ""; showEmpty(); stopSpeech(); };
+$("input").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+function autosize() { const t = $("input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 240) + "px"; }
+$("input").addEventListener("input", autosize);
+
+// images: paste, drop, pick
+function addFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) continue;
+    if (f.size > 20 * 1024 * 1024) { toast("Image too large (max 20 MB)", true); continue; }
+    const r = new FileReader();
+    r.onload = () => { const [, data] = r.result.split(","); pendingImages.push({ media_type: f.type, data }); renderThumbs(); };
+    r.readAsDataURL(f);
+  }
+}
+function renderThumbs() {
+  $("thumbs").innerHTML = pendingImages.map((i, n) => `<div class="thumb"><img src="data:${i.media_type};base64,${i.data}"><button data-n="${n}" title="Remove">×</button></div>`).join("");
+  $("thumbs").style.marginBottom = pendingImages.length ? "8px" : "0";
+}
+$("thumbs").onclick = (e) => { if (e.target.dataset.n !== undefined) { pendingImages.splice(+e.target.dataset.n, 1); renderThumbs(); } };
+$("input").addEventListener("paste", (e) => {
+  const files = [...(e.clipboardData?.items || [])].filter(i => i.kind === "file").map(i => i.getAsFile()).filter(Boolean);
+  if (files.length) { e.preventDefault(); addFiles(files); }
+});
+const box = $("inputbox");
+["dragenter", "dragover"].forEach(t => box.addEventListener(t, (e) => { e.preventDefault(); box.classList.add("drag"); }));
+["dragleave", "drop"].forEach(t => box.addEventListener(t, (e) => { e.preventDefault(); box.classList.remove("drag"); }));
+box.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+$("attach").onclick = () => $("file").click();
+$("file").onchange = (e) => { addFiles(e.target.files); e.target.value = ""; };
+
+async function restoreHistory() {
+  try {
+    const { messages } = await api("GET", "/api/history?session_id=" + SESSION);
+    const toolCards = {};
+    for (const m of messages || []) {
+      if (m.role === "user") addUser(m.content, m.images || []);
+      else if (m.role === "assistant") {
+        if (m.content) addEl("msg assistant", md(m.content));
+        for (const tc of m.tool_calls || []) toolCards[tc.id] = toolCard(tc.name, typeof tc.args === "object" ? (tc.args.command || tc.args.path || tc.args.pattern || tc.args.url || "") : "", tc.id);
+      } else if (m.role === "tool") {
+        const c = toolCards[m.tool_call_id]; if (c) { c.classList.add("done"); c.querySelector("pre").textContent = m.content; }
+      }
+    }
+  } catch {}
+  showEmpty();
+}
+
+// ---------- boot ----------
+(async () => {
+  if (!TOKEN) { document.body.innerHTML = `<div class="empty" style="padding:24px"><div class="big"><span>ASG</span></div><p class="tag">no access token</p><p>Open the dashboard from the terminal with <code>/dashboard</code> or <code>asg dashboard</code>.</p></div>`; return; }
+  try { await load(); await restoreHistory(); $("input").focus(); }
+  catch (err) { document.body.innerHTML = `<div class="empty" style="padding:24px"><div class="big"><span>ASG</span></div><p class="tag">connection lost</p><p>${esc(err.message)}</p></div>`; }
+})();
+</script>
+</body>
+</html>
