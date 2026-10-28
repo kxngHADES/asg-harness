@@ -153,7 +153,7 @@ func (o *Ollama) ListModels(ctx context.Context) ([]string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&tags); err != nil {
 		return nil, err
 	}
-	var names []string
+	names := []string{}
 	for _, m := range tags.Models {
 		names = append(names, m.Name)
 	}

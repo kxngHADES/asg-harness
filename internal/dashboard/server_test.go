@@ -63,3 +63,21 @@ func TestKeysMaskedAndPreserved(t *testing.T) {
 		t.Fatalf("masked key round-trip broke config: %+v", got)
 	}
 }
+
+// Regression: a fresh install has no skills; the list must be [] not null
+// or the dashboard crashes with "Cannot read properties of null".
+func TestStateListsNeverNull(t *testing.T) {
+	s := testServer(t)
+	body := do(s, "GET", "/api/state", "127.0.0.1:1", s.token, "").Body.String()
+	for _, k := range []string{`"skills":null`, `"tools":null`, `"voices":null`} {
+		if strings.Contains(body, k) {
+			t.Errorf("state contains %s", k)
+		}
+	}
+	if !strings.Contains(body, `"skills":[]`) {
+		t.Errorf("want empty skills array, got %.200s", body)
+	}
+	if hist := do(s, "GET", "/api/history", "127.0.0.1:1", s.token, "").Body.String(); !strings.Contains(hist, `"messages":[]`) {
+		t.Errorf("history: %s", hist)
+	}
+}

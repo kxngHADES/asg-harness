@@ -136,6 +136,7 @@ func (r *REPL) Run() error {
 		if line == "" && len(r.pending) == 0 {
 			continue
 		}
+		line = normalizeCommand(line)
 		if strings.HasPrefix(line, "/") && !media.IsImagePath(strings.Fields(line)[0]) {
 			if quit := r.command(line); quit {
 				return nil
@@ -144,6 +145,21 @@ func (r *REPL) Run() error {
 		}
 		r.send(line)
 	}
+}
+
+// bareCommands are words that, typed alone, almost certainly mean the
+// command rather than a message to the model.
+var bareCommands = map[string]bool{"clear": true, "exit": true, "quit": true, "help": true}
+
+// normalizeCommand forgives "//model" typos and bare "clear"/"exit"/….
+func normalizeCommand(line string) string {
+	if strings.HasPrefix(line, "//") && !strings.HasPrefix(line, "///") {
+		return line[1:]
+	}
+	if bareCommands[strings.ToLower(line)] {
+		return "/" + strings.ToLower(line)
+	}
+	return line
 }
 
 func (r *REPL) prompt() string {

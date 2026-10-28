@@ -388,8 +388,13 @@ function toast(msg, bad) {
 let STATE = null;
 let CFG = null;
 
+// normalizeState guards against null lists (e.g. no skills installed yet).
+function normalizeState(st) {
+  for (const k of ["skills", "tools", "voices"]) st[k] = st[k] || [];
+  return st;
+}
 async function load() {
-  STATE = await api("GET", "/api/state");
+  STATE = normalizeState(await api("GET", "/api/state"));
   CFG = structuredClone(STATE.config);
   renderQuick(); renderProviders(); renderSettings(); renderSkills(); renderTools();
 }
@@ -418,7 +423,7 @@ async function renderQuick() {
   } catch {}
 }
 async function saveConfig(next, quiet) {
-  STATE = await api("PUT", "/api/config", next);
+  STATE = normalizeState(await api("PUT", "/api/config", next));
   CFG = structuredClone(STATE.config);
   renderQuick(); renderProviders(); renderSettings();
   speechModelsP = null;
@@ -641,7 +646,7 @@ $("skillList").addEventListener("click", async (e) => {
     }
     if (d) {
       e.target.disabled = true;
-      const r = await api("DELETE", "/api/skills/" + encodeURIComponent(d)); STATE.skills = r.skills; renderSkills(); toast("Removed " + d);
+      const r = await api("DELETE", "/api/skills/" + encodeURIComponent(d)); STATE.skills = r.skills || []; renderSkills(); toast("Removed " + d);
     }
   } catch (err) { toast(err.message, true); e.target.disabled = false; }
 });
@@ -651,7 +656,7 @@ $("importSkill").onclick = async () => {
   const b = $("importSkill"); b.disabled = true; b.textContent = "Importing…";
   try {
     const r = await api("POST", "/api/skills/import", { source: src });
-    STATE.skills = r.skills; renderSkills(); $("skillSrc").value = "";
+    STATE.skills = r.skills || []; renderSkills(); $("skillSrc").value = "";
     toast("Imported " + r.imported.map(s => s.name).join(", "));
   } catch (err) { toast(err.message, true); }
   b.disabled = false; b.textContent = "Import";
@@ -669,14 +674,14 @@ $("skillFile").onchange = async (e) => {
   if (/^skill$/i.test(name)) name = prompt("Name for this skill?") || "";
   try {
     const r = await api("POST", "/api/skills", { name, description: desc, body: body.trim() });
-    STATE.skills = r.skills; renderSkills(); toast("Uploaded " + name);
+    STATE.skills = r.skills || []; renderSkills(); toast("Uploaded " + name);
   } catch (err) { toast(err.message, true); }
   e.target.value = "";
 };
 $("createSkill").onclick = async () => {
   try {
     const r = await api("POST", "/api/skills", { name: $("newSkillName").value, description: $("newSkillDesc").value, body: $("newSkillBody").value });
-    STATE.skills = r.skills; renderSkills(); toast("Created");
+    STATE.skills = r.skills || []; renderSkills(); toast("Created");
     $("newSkillName").value = $("newSkillDesc").value = $("newSkillBody").value = "";
   } catch (err) { toast(err.message, true); }
 };
@@ -686,7 +691,7 @@ function renderTools() {
   $("toolList").innerHTML = STATE.tools.map(t => `<div class="card tool-card"><div class="row" style="align-items:center">
     <span class="mono" style="font-weight:600">${esc(t.name)}</span>${t.needs_approval ? '<span class="pill warn">asks</span>' : '<span class="pill">read-only</span>'}</div>
     <div class="muted" style="margin-top:4px">${esc(t.description)}</div></div>`).join("") +
-    (STATE.skills.length ? `<div class="card"><div class="row"><span class="mono" style="font-weight:600">use_skill</span><span class="pill">read-only</span></div><div class="muted" style="margin-top:4px">Load the full instructions of an installed skill by name.</div></div>` : "");
+    ((STATE.skills || []).length ? `<div class="card"><div class="row"><span class="mono" style="font-weight:600">use_skill</span><span class="pill">read-only</span></div><div class="muted" style="margin-top:4px">Load the full instructions of an installed skill by name.</div></div>` : "");
 }
 
 // ---------- markdown ----------

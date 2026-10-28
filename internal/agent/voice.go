@@ -140,7 +140,7 @@ func (a *App) SpeechModels(ctx context.Context, provider string) ([]string, erro
 	}
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	var out []string
+	out := []string{}
 	for _, m := range models {
 		if strings.HasSuffix(m, "-cloud") || strings.HasSuffix(m, ":cloud") {
 			continue
@@ -169,6 +169,9 @@ func (a *App) Voices(ctx context.Context, provider, model string) ([]string, err
 	info, err := a.ModelInfo(ctx, pc, model)
 	if err != nil {
 		return nil, err
+	}
+	if info.Voices == nil {
+		return []string{}, nil
 	}
 	return info.Voices, nil
 }

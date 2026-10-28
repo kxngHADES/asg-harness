@@ -17,3 +17,18 @@ func TestParseSpec(t *testing.T) {
 		t.Errorf("%+v", s)
 	}
 }
+
+func TestNormalizeCommand(t *testing.T) {
+	for in, want := range map[string]string{
+		"//model llama3": "/model llama3",
+		"clear":          "/clear",
+		"EXIT":           "/exit",
+		"clear the logs": "clear the logs",
+		"/help":          "/help",
+		"///etc/hosts":   "///etc/hosts",
+	} {
+		if got := normalizeCommand(in); got != want {
+			t.Errorf("normalizeCommand(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -210,7 +210,7 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 		"skills":      s.app.Skills.List(),
 		"skills_dir":  s.app.Skills.InstallDir(),
 		"tools":       tools,
-		"voices":      audio.SystemVoices(),
+		"voices":      append([]string{}, audio.SystemVoices()...),
 	})
 }
 
@@ -476,7 +476,7 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		ToolCalls []llm.ToolCall `json:"tool_calls,omitempty"`
 		ToolID    string         `json:"tool_call_id,omitempty"`
 	}
-	var out []msg
+	out := []msg{}
 	for _, m := range ws.sess.History {
 		mm := msg{Role: string(m.Role), Content: m.Content, ToolCalls: m.ToolCalls, ToolID: m.ToolCallID}
 		for _, i := range m.Images {

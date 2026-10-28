@@ -48,7 +48,7 @@ func (m *Manager) InstallDir() string { return m.Dirs[0] }
 // List loads every skill found in the skill directories.
 func (m *Manager) List() []*Skill {
 	seen := map[string]bool{}
-	var out []*Skill
+	out := []*Skill{} // never nil: the dashboard expects a JSON array
 	for _, dir := range m.Dirs {
 		entries, err := os.ReadDir(dir)
 		if err != nil {

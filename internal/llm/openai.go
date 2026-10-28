@@ -199,7 +199,7 @@ func (o *OpenAI) ListModels(ctx context.Context) ([]string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		return nil, err
 	}
-	var ids []string
+	ids := []string{}
 	for _, m := range list.Data {
 		ids = append(ids, m.ID)
 	}
