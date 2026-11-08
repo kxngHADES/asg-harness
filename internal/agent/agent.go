@@ -16,6 +16,8 @@ import (
 	"github.com/kxngHADES/asg-harness/internal/audio"
 	"github.com/kxngHADES/asg-harness/internal/config"
 	"github.com/kxngHADES/asg-harness/internal/llm"
+	"github.com/kxngHADES/asg-harness/internal/memory"
+	"github.com/kxngHADES/asg-harness/internal/perms"
 	"github.com/kxngHADES/asg-harness/internal/skills"
 	"github.com/kxngHADES/asg-harness/internal/tools"
 )
@@ -25,6 +27,10 @@ type App struct {
 	Tools   *tools.Registry
 	Skills  *skills.Manager
 	Speaker *audio.Speaker
+	// Perms remembers "always allow" answers across sessions.
+	Perms *perms.Store
+	// Memory holds notes the agent saves for future sessions.
+	Memory *memory.Manager
 	// Yolo auto-approves tool calls for this process only (the -yolo flag).
 	Yolo bool
 
@@ -38,6 +44,8 @@ func NewApp(cfg *config.Store) *App {
 		Tools:   tools.Builtins(),
 		Skills:  skills.NewManager(config.Dir()),
 		Speaker: &audio.Speaker{},
+		Perms:   perms.Load(config.Dir()),
+		Memory:  memory.New(config.Dir()),
 	}
 }
 
@@ -57,15 +65,24 @@ type Decision int
 const (
 	Deny Decision = iota
 	Allow
-	AlwaysAllow
+	AlwaysAllow       // remember for this project
+	AlwaysAllowGlobal // remember everywhere
 )
+
+// Gate describes a tool call waiting for permission.
+type Gate struct {
+	Summary string
+	// Scope is what an "always" answer covers, e.g. "git" for any git
+	// command. Empty means the call can only be approved once.
+	Scope string
+}
 
 // Events receives progress from a running turn.
 type Events interface {
 	Text(delta string)
 	ToolStart(call llm.ToolCall, summary string)
 	ToolEnd(call llm.ToolCall, result string, isErr bool)
-	Approve(ctx context.Context, call llm.ToolCall, summary string) Decision
+	Approve(ctx context.Context, call llm.ToolCall, gate Gate) Decision
 	Notice(msg string)
 }
 
@@ -90,14 +107,6 @@ func (s *Session) Clear() {
 	s.noTools = false
 }
 
-func (s *Session) Allowed() []string {
-	var out []string
-	for k := range s.allowed {
-		out = append(out, k)
-	}
-	return out
-}
-
 // SystemPrompt builds the system prompt for the current directory and skills.
 func (s *Session) SystemPrompt() string {
 	cfg := s.app.Config.Get()
@@ -114,6 +123,7 @@ Keep answers concise and use Markdown. When you change files, say what you chang
 			break
 		}
 	}
+	b.WriteString(s.app.Memory.Prompt(12000))
 	if list := s.app.Skills.List(); len(list) > 0 {
 		b.WriteString("\nAvailable skills (call the use_skill tool to load full instructions before doing a task one of them covers):\n")
 		for _, sk := range list {
@@ -160,7 +170,7 @@ func SkillPrompt(sk *skills.Skill) string {
 }
 
 func (s *Session) toolset() []*tools.Tool {
-	all := s.app.Tools.All()
+	all := append(s.app.Tools.All(), memoryTools(s.app.Memory)...)
 	if len(s.app.Skills.List()) > 0 {
 		all = append(all, s.skillTool())
 	}
@@ -247,14 +257,26 @@ func (s *Session) runTool(ctx context.Context, call llm.ToolCall, byName map[str
 	if t.Describe != nil {
 		summary = t.Describe(call.Args)
 	}
-	if t.NeedsApproval && !auto && !s.allowed[call.Name] {
-		switch ev.Approve(ctx, call, summary) {
-		case Deny:
-			msg := "The user denied this tool call. Ask them how to proceed instead of retrying."
-			ev.ToolEnd(call, "denied", true)
-			return msg
-		case AlwaysAllow:
-			s.allowed[call.Name] = true
+	if t.NeedsApproval && !auto {
+		cwd, _ := os.Getwd()
+		rules, rerr := perms.RulesFor(call.Name, call.Args)
+		key := strings.Join(rules, " ")
+		if rerr != nil || (!s.allowed[key] && !s.app.Perms.Allowed(cwd, rules)) {
+			gate := Gate{Summary: summary}
+			if rerr == nil {
+				gate.Scope = perms.Describe(rules)
+			}
+			d := ev.Approve(ctx, call, gate)
+			if d == Deny {
+				ev.ToolEnd(call, "denied", true)
+				return "The user denied this tool call. Ask them how to proceed instead of retrying."
+			}
+			if rerr == nil && (d == AlwaysAllow || d == AlwaysAllowGlobal) {
+				s.allowed[key] = true
+				if err := s.app.Perms.Add(cwd, rules, d == AlwaysAllowGlobal); err != nil {
+					ev.Notice("could not save permission: " + err.Error())
+				}
+			}
 		}
 	}
 	ev.ToolStart(call, summary)

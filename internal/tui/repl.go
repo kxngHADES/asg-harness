@@ -34,7 +34,10 @@ type REPL struct {
 	app     *agent.App
 	sess    *agent.Session
 	t       *term.Terminal
+	in      *inputQueue
+	out     io.Writer // where menus draw
 	fd      int
+	menuOn  bool // '/' on an empty main prompt opens the command menu
 	pending []attachment
 
 	mu        sync.Mutex
@@ -47,11 +50,11 @@ type REPL struct {
 }
 
 func New(app *agent.App) *REPL {
-	r := &REPL{app: app, sess: app.NewSession(), fd: int(os.Stdin.Fd())}
+	r := &REPL{app: app, sess: app.NewSession(), fd: int(os.Stdin.Fd()), in: &inputQueue{r: os.Stdin}, out: os.Stdout}
 	rw := struct {
 		io.Reader
 		io.Writer
-	}{os.Stdin, os.Stdout}
+	}{r.in, os.Stdout}
 	r.t = term.NewTerminal(rw, "")
 	r.t.AutoCompleteCallback = r.onKey
 	return r
@@ -61,20 +64,27 @@ type command struct {
 	name, args, help string
 }
 
+// needsArg reports whether a command is useless without arguments, so the
+// '/' menu inserts it for editing instead of running it.
+func (c command) needsArg() bool { return strings.HasPrefix(c.args, "<") }
+
 var commands = []command{
 	{"/help", "", "show this help"},
+	{"/model", "[name]", "pick a model from a menu, or set one by name"},
+	{"/provider", "[name]", "pick a provider (ollama, anthropic, openai, ...) and then its model"},
+	{"/dashboard", "", "open the browser dashboard (chat, config, skills)"},
+	{"/init", "", "write an ASG.md describing this project for future sessions"},
+	{"/memory", "[note]", "browse saved memories, or ask ASG to remember something"},
+	{"/permissions", "", `review and revoke remembered "always allow" answers`},
 	{"/paste", "", "attach an image from the clipboard (or press Ctrl+V)"},
 	{"/image", "<path>", "attach an image file (you can also drag files into the terminal)"},
-	{"/model", "[name]", "show or set the model for the active provider"},
 	{"/models", "", "list models available from the active provider"},
-	{"/provider", "[name]", "show or switch provider (ollama, anthropic, openai, ...)"},
 	{"/voice", "[on|off|auto|…]", "speak replies aloud and choose who speaks (/voice help)"},
 	{"/speak", "", "read the last reply aloud"},
 	{"/skills", "", "list installed skills"},
 	{"/skill", "add <src> | rm <name> | show <name>", "import a skill (path, URL, github:owner/repo[/path]) or remove one"},
 	{"/tools", "", "list tools the model can call"},
 	{"/yolo", "", "toggle auto-approval of tool calls"},
-	{"/dashboard", "", "open the browser dashboard (chat, config, skills)"},
 	{"/config", "", "show config file location and active settings"},
 	{"/usage", "", "show token usage for this session"},
 	{"/clear", "", "start a new conversation"},
@@ -91,12 +101,19 @@ func (r *REPL) banner() {
 		model = pc.Model
 	}
 	cwd, _ := os.Getwd()
+	project := ""
+	if _, err := os.Stat("ASG.md"); err != nil {
+		project = slate + " · no ASG.md, try " + lime + "/init" + reset
+	}
 	fmt.Println()
-	fmt.Print(wordmark())
-	r.printf("  %s AGENT SHELL %s  %s%s%s/%s%s%s\n", onLime, reset, slate, name, reset, lime, model, reset)
-	r.printf("  %s%s%s\n", slate, cwd, reset)
+	petBanner(os.Stdout, []string{
+		onLime + " ASG " + reset + " " + bold + "agent shell" + reset,
+		slate + name + reset + "/" + lime + model + reset,
+		slate + oneLine(cwd, 40) + reset + project,
+		"type " + lime + "/" + reset + " for commands",
+	})
 	r.printf("  %s%s%s\n", slate, strings.Repeat("━", min(termWidth()-4, 60)), reset)
-	r.printf("  %s/help%s commands  %s·%s  %sctrl+v%s paste image  %s·%s  %sctrl+c%s stop  %s·%s  %s/dashboard%s web ui\n\n",
+	r.printf("  %s/%s menu  %s·%s  %sctrl+v%s paste image  %s·%s  %sctrl+c%s stop  %s·%s  %s/dashboard%s web ui\n\n",
 		lime, reset, slate, reset, lime, reset, slate, reset, lime, reset, slate, reset, lime, reset)
 }
 
@@ -191,7 +208,9 @@ func (r *REPL) readInput() (string, error) {
 
 	var lines []string
 	r.t.SetPrompt(r.prompt())
+	defer func() { r.menuOn = false }()
 	for {
+		r.menuOn = len(lines) == 0
 		line, err := r.t.ReadLine()
 		if err == term.ErrPasteIndicator {
 			lines = append(lines, line)
@@ -214,6 +233,10 @@ func (r *REPL) readInput() (string, error) {
 // onKey handles Ctrl+V image paste and Tab completion of slash commands.
 func (r *REPL) onKey(line string, pos int, key rune) (string, int, bool) {
 	switch key {
+	case '/':
+		if r.menuOn && line == "" {
+			return r.slashMenu()
+		}
 	case keyCtrlV:
 		img, err := media.ClipboardImage()
 		if err != nil {
@@ -377,7 +400,8 @@ func (r *REPL) Notice(msg string) {
 	r.printf("  %s! %s%s\n", amber, msg, reset)
 }
 
-func (r *REPL) Approve(ctx context.Context, call llm.ToolCall, summary string) agent.Decision {
+func (r *REPL) Approve(ctx context.Context, call llm.ToolCall, gate agent.Gate) agent.Decision {
+	summary := gate.Summary
 	r.spin.Stop()
 	r.md.Flush()
 	bar := strings.Repeat("▀", min(termWidth()-14, 48))
@@ -397,7 +421,11 @@ func (r *REPL) Approve(ctx context.Context, call llm.ToolCall, summary string) a
 		return agent.Deny
 	}
 	defer term.Restore(r.fd, old)
-	r.t.SetPrompt(fmt.Sprintf("  %s[y]%s run  %s[a]%s always %s  %s[n]%s block %s▸%s ", lime, reset, lime, reset, call.Name, red, reset, amber, reset))
+	opts := fmt.Sprintf("  %s[y]%s run  ", lime, reset)
+	if gate.Scope != "" {
+		opts += fmt.Sprintf("%s[a]%s always %s%s%s here  %s[g]%s everywhere  ", lime, reset, bold, gate.Scope, reset, lime, reset)
+	}
+	r.t.SetPrompt(opts + fmt.Sprintf("%s[n]%s block %s▸%s ", red, reset, amber, reset))
 	for {
 		ans, err := r.t.ReadLine()
 		if err != nil {
@@ -412,7 +440,15 @@ func (r *REPL) Approve(ctx context.Context, call llm.ToolCall, summary string) a
 		case "y", "yes", "":
 			return agent.Allow
 		case "a", "always":
-			return agent.AlwaysAllow
+			if gate.Scope != "" {
+				r.printf("  %sremembered: %s is always allowed in this project (/permissions to undo)%s\n", slate, gate.Scope, reset)
+				return agent.AlwaysAllow
+			}
+		case "g", "global", "everywhere":
+			if gate.Scope != "" {
+				r.printf("  %sremembered: %s is always allowed everywhere (/permissions to undo)%s\n", slate, gate.Scope, reset)
+				return agent.AlwaysAllowGlobal
+			}
 		case "n", "no":
 			return agent.Deny
 		}
@@ -462,7 +498,7 @@ func (r *REPL) command(line string) (quit bool) {
 	case "/help":
 		r.printf("\n  %s COMMANDS %s\n", onLime, reset)
 		for _, c := range commands {
-			r.printf("  %s%-10s%s %-36s %s%s%s\n", lime, c.name, reset, c.args, slate, c.help, reset)
+			r.printf("  %s%-13s%s %-36s %s%s%s\n", lime, c.name, reset, c.args, slate, c.help, reset)
 		}
 		if sk := r.app.Skills.List(); len(sk) > 0 {
 			r.printf("\n  %s SKILLS %s %s/<name> [request]%s\n", onLime, reset, slate, reset)
@@ -494,10 +530,8 @@ func (r *REPL) command(line string) (quit bool) {
 		}
 		r.printf("  %s▣ attached %s%s\n", magenta, strings.Join(names, ", "), reset)
 	case "/model":
-		cfg := r.app.Config.Get()
-		name, pc := cfg.Active()
 		if len(args) == 0 {
-			r.printf("%s · %s%s%s\n", name, bold, pc.Model, reset)
+			r.pickModel(ctx)
 			return
 		}
 		r.update(func(c *config.Config) error { c.Providers[c.ActiveProvider].Model = rest; return nil })
@@ -522,18 +556,7 @@ func (r *REPL) command(line string) (quit bool) {
 	case "/provider", "/providers":
 		cfg := r.app.Config.Get()
 		if len(args) == 0 {
-			for _, n := range cfg.ProviderNames() {
-				p := cfg.Providers[n]
-				mark := "  "
-				if n == cfg.ActiveProvider {
-					mark = green + "● " + reset
-				}
-				key := ""
-				if p.Type != "ollama" && p.APIKey == "" {
-					key = yellow + " (no API key — set it in /dashboard)" + reset
-				}
-				r.printf("%s%-12s %s%s · %s%s%s\n", mark, n, dim, p.Type, p.Model, reset, key)
-			}
+			r.pickProvider(ctx)
 			return
 		}
 		if _, ok := cfg.Providers[args[0]]; !ok {
@@ -542,6 +565,16 @@ func (r *REPL) command(line string) (quit bool) {
 		}
 		r.update(func(c *config.Config) error { c.ActiveProvider = args[0]; return nil })
 		r.printf("%sprovider → %s (%s)%s\n", dim, args[0], r.app.Config.Get().Providers[args[0]].Model, reset)
+	case "/init":
+		r.initProject()
+	case "/memory", "/memories":
+		if rest != "" {
+			r.send("Remember this for future sessions (save it with memory_save, choosing a fitting name and scope): " + rest)
+			return
+		}
+		r.memoryMenu()
+	case "/permissions", "/perms":
+		r.permissionsMenu()
 	case "/voice":
 		r.voiceCommand(ctx, args)
 	case "/speak":
@@ -584,8 +617,9 @@ func (r *REPL) command(line string) (quit bool) {
 	case "/config":
 		cfg := r.app.Config.Get()
 		name, pc := cfg.Active()
-		r.printf("  file:       %s\n  provider:   %s (%s @ %s)\n  model:      %s\n  auto-approve: %v\n  voice:      %v (%s)\n  skills dir: %s\n",
-			r.app.Config.Path(), name, pc.Type, pc.BaseURL, pc.Model, cfg.AutoApprove, cfg.Audio.Enabled, cfg.Audio.Engine, r.app.Skills.InstallDir())
+		r.printf("  file:       %s\n  provider:   %s (%s @ %s)\n  model:      %s\n  auto-approve: %v\n  voice:      %v (%s)\n  skills dir: %s\n  memory:     %s · %s\n  permissions: %s\n",
+			r.app.Config.Path(), name, pc.Type, pc.BaseURL, pc.Model, cfg.AutoApprove, cfg.Audio.Enabled, cfg.Audio.Engine, r.app.Skills.InstallDir(),
+			r.app.Memory.Dir("user"), r.app.Memory.Dir("project"), r.app.Perms.Path())
 	case "/usage":
 		u := r.sess.Usage
 		r.printf("  last context: %d tokens · generated: %d tokens · messages: %d\n", u.InputTokens, u.OutputTokens, len(r.sess.History))

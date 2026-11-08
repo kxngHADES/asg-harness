@@ -54,28 +54,6 @@ func termWidth() int {
 	return w
 }
 
-// wordmark prints the ASG block logo with a lime→cyan gradient.
-func wordmark() string {
-	rows := []string{
-		"▄▀█ █▀ █▀▀",
-		"█▀█ ▄█ █▄█",
-	}
-	ramp := []int{154, 154, 118, 84, 49, 50, 51, 45, 45, 39}
-	var b strings.Builder
-	for _, row := range rows {
-		b.WriteString("  ")
-		for i, r := range []rune(row) {
-			if reset == "" {
-				b.WriteRune(r)
-				continue
-			}
-			fmt.Fprintf(&b, "\x1b[38;5;%dm%c", ramp[i%len(ramp)], r)
-		}
-		b.WriteString(reset + "\n")
-	}
-	return b.String()
-}
-
 // mdStream prints streamed markdown inside the ASG gutter. Text is written
 // as it arrives; once a line is complete it is redrawn with styling when it
 // fits on one row.
@@ -166,36 +144,33 @@ type spinner struct {
 	once sync.Once
 }
 
-func scanFrame(i int) string {
-	const cells = 7
-	pos := i % (2 * (cells - 1))
-	if pos >= cells {
-		pos = 2*(cells-1) - pos
-	}
-	var b strings.Builder
-	for c := 0; c < cells; c++ {
-		if c == pos {
-			b.WriteString(lime + "▰")
-		} else {
-			b.WriteString(slate + "▱")
-		}
-	}
-	return b.String() + reset
-}
-
 func startSpinner(label string) *spinner {
 	s := &spinner{stop: make(chan struct{})}
 	s.done.Add(1)
+	big := animate() // the pixel crab at work, or a one-line fallback
 	go func() {
 		defer s.done.Done()
-		t := time.NewTicker(80 * time.Millisecond)
+		tick := 80 * time.Millisecond
+		if big {
+			tick = 110 * time.Millisecond
+			fmt.Print("\x1b[?25l")
+		}
+		t := time.NewTicker(tick)
 		defer t.Stop()
 		start := time.Now()
 		for i := 0; ; i++ {
-			fmt.Printf("\r  %s %s%s%s %s%.1fs%s", scanFrame(i), cyan, label, reset, slate, time.Since(start).Seconds(), reset)
+			if big {
+				fmt.Print(workFrame(i, label, time.Since(start)))
+			} else {
+				fmt.Printf("\r  %s %s%s%s %s%.1fs%s", petTrack(i), cyan, label, reset, slate, time.Since(start).Seconds(), reset)
+			}
 			select {
 			case <-s.stop:
-				fmt.Print("\r\x1b[2K")
+				if big {
+					fmt.Print("\r\x1b[J\x1b[?25h") // erase the sprite block
+				} else {
+					fmt.Print("\r\x1b[2K")
+				}
 				return
 			case <-t.C:
 			}

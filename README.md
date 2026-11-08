@@ -1,9 +1,6 @@
 <div align="center">
 
-```
-▄▀█ █▀ █▀▀
-█▀█ ▄█ █▄█
-```
+<img src="docs/asg-crab.svg" width="160" alt="ASG, a pixel hermit crab carrying a lime spiral shell">&nbsp;&nbsp;&nbsp;<img src="docs/asg-crab-working.svg" width="160" alt="ASG at work: tapping its claws with sparks of thought">
 
 ### a signal console for local & hosted models
 
@@ -22,9 +19,10 @@ and switches to Anthropic or any OpenAI-compatible API in one click.
 ---
 
 ```text
-  ▄▀█ █▀ █▀▀
-  █▀█ ▄█ █▄█
-   AGENT SHELL   ollama/gemma4:31b-cloud
+  [pixel crab, 20×7]     ASG  agent shell
+                         ollama/gemma4:31b-cloud
+                         ~/code/asg-harness
+                         type / for commands
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 gemma4:31b-cloud ▸ why is the build failing? [Image #1]
@@ -35,7 +33,7 @@ gemma4:31b-cloud ▸ why is the build failing? [Image #1]
   ▌ - if _, pc := r.app.Config.Get().Active(); pc != nil {
   ▌ + cfg := r.app.Config.Get()
   ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-  [y] run  [a] always edit_file  [n] block ▸ y
+  [y] run  [a] always edit_file here  [g] everywhere  [n] block ▸ y
 ┃  FIXED 
 ┃ ▪ Active() has a pointer receiver, so I bound the config first.
   ── 6.2s · 4210↑ 188↓ tokens ──
@@ -115,7 +113,11 @@ cd your-project
 asg
 ```
 
-A full interactive agent that reads and edits your code, runs commands behind approval gates, takes pasted images, and can speak its replies. If the folder has an `ASG.md`, `AGENTS.md` or `CLAUDE.md`, ASG adds it as project instructions.
+A full interactive agent that reads and edits your code, runs commands behind approval gates, takes pasted images, and can speak its replies. If the folder has an `ASG.md`, `AGENTS.md` or `CLAUDE.md`, ASG adds it as project instructions. Run `/init` and ASG explores the project and writes (or improves) an `ASG.md` for future sessions.
+
+**Memory.** ASG keeps Markdown notes between sessions. Tell it something lasting ("always write tests with pytest") and it saves a note with its `memory_save` tool, or use `/memory <note>` to ask directly. Notes live in `~/.asg/memory/` (every project) and `~/.asg/projects/<project>/memory/` (this folder only), one `.md` file each, so you can edit them by hand. `/memory` lets you browse and delete them.
+
+**Remembered permissions.** At a GATE, `[a]` always allows that kind of call in this project and `[g]` allows it everywhere, and both carry over to future sessions. For shell commands the rule covers the program, so allowing `git status` also allows `git log`, but `git status && rm -rf build` still asks about `rm`. Commands containing `$(…)` or backticks always ask. Review or revoke rules with `/permissions` (stored in `~/.asg/permissions.json`).
 
 ```sh
 asg -provider anthropic -model claude-opus-5-5   # switch backend (saved as default)
@@ -229,12 +231,17 @@ If a model rejects tool definitions, ASG switches to chat-only mode for it autom
 
 ## ▸ Commands
 
+Press **/** on an empty prompt to open the command menu: type to filter, **↑↓** to move, **Enter** to run, **Esc** to close. Commands that need an argument are inserted for you to finish, and typing a space keeps writing by hand.
+
 | Command | |
 |---|---|
+| `/provider [name]` | pick a provider from a menu (asks for a missing API key), then its model |
+| `/model [name]` · `/models` | pick a model from a menu, set one by name, or list them |
+| `/init` | write or improve `ASG.md` for this project |
+| `/memory [note]` | browse and delete memories, or ask ASG to remember something |
+| `/permissions` | review and revoke remembered "always allow" answers |
 | `/paste` · **Ctrl+V** | attach a clipboard image |
 | `/image <path>` | attach an image file (or drag it in, or `@path`) |
-| `/model [name]` · `/models` | show / set / list models |
-| `/provider [name]` | switch backend |
 | `/voice …` · `/speak` | voice output: `/voice help` for everything |
 | `/skills` · `/skill add\|rm\|show` | manage skills |
 | `/<skill> <request>` | run a request with a skill |
@@ -242,13 +249,15 @@ If a model rejects tool definitions, ASG switches to chat-only mode for it autom
 | `/dashboard` | open the web version |
 | `/clear` · `/usage` · `/config` · `/exit` | |
 
-End a line with `\` for multi-line input. Pasted multi-line text arrives as one message. **Ctrl+C** stops a running turn, and pressing it twice at the prompt quits. **Tab** completes commands. Set `NO_COLOR=1` for plain output.
+End a line with `\` for multi-line input. Pasted multi-line text arrives as one message. **Ctrl+C** stops a running turn, and pressing it twice at the prompt quits. **Tab** completes commands. Set `NO_COLOR=1` for plain output, or `ASG_NO_ANIMATION=1` to keep the colours but skip the animations.
+
+**The crab.** ASG's mascot is pixel art drawn with half-block characters (two pixels per cell, true colour or 256 colours). It scuttles in when you start `asg`, and while ASG is thinking or running a tool it works away under your prompt, tapping its claws with sparks of thought, then gets out of the way when the reply streams in. Narrow terminals and `ASG_NO_ANIMATION` get a one-line crab instead. The dashboard shows the same sprite as an animated SVG that switches to its working animation while a reply is in progress. The art lives in `internal/sprite`; after changing it, run `UPDATE_SPRITES=1 go test ./internal/sprite/` to refresh the SVGs in `docs/`.
 
 ---
 
 ## ▸ Security
 
-- **Gates.** `bash`, `write_file`, `edit_file` and `web_fetch` ask before running. **Always** remembers your answer for this session only, and `-yolo` lasts one run only.
+- **Gates.** `bash`, `write_file`, `edit_file` and `web_fetch` ask before running. `[a]`/`[g]` remember your answer per program or tool (see *Remembered permissions*) until you revoke it with `/permissions`, and `-yolo` lasts one run only.
 - **Dashboard.** It listens on **127.0.0.1 only**, and each run gets a random token passed in the URL fragment. Every API call must carry that token, and requests with a non-localhost `Host` are rejected (DNS-rebinding protection). API keys are masked before they reach the browser.
 - **Updates.** Releases and `asg update` are verified against `checksums.txt`.
 
@@ -268,6 +277,9 @@ cmd/asg               CLI entry point
 internal/agent        model ↔ tool loop, sessions, voice resolution
 internal/llm          provider-neutral types + Ollama / OpenAI / Anthropic adapters
 internal/tools        built-in tools
+internal/perms        remembered "always allow" rules
+internal/memory       Markdown notes kept between sessions
+internal/sprite       the pixel-art crab: frames, animations, SVG export
 internal/skills       SKILL.md loading and importing
 internal/media        images: files, drag-and-drop paths, clipboard
 internal/audio        speech: OS voice, Ollama / OpenAI speech models
