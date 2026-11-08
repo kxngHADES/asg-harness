@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.2](https://github.com/kxngHADES/asg-harness/compare/v0.1.1...v0.1.2) (2026-11-08)
+
+
+### Features
+
+* slash command menu, memory, persistent permissions, /init and pixel crab mascot ([a4d3695](https://github.com/kxngHADES/asg-harness/commit/a4d3695cbc89505362a7e37807692c55cb4a36aa))
+* slash command menu, memory, persistent permissions, /init and pixel crab mascot ([a4d3695](https://github.com/kxngHADES/asg-harness/commit/a4d3695cbc89505362a7e37807692c55cb4a36aa))
+* slash command menu, memory, persistent permissions, /init and pixel crab mascot ([ee3306d](https://github.com/kxngHADES/asg-harness/commit/ee3306d77a549240f0f781e315e568e6bc395cc7))
+
 ## [0.1.1](https://github.com/kxngHADES/asg-harness/compare/v0.1.0...v0.1.1) (2026-10-28)
 
 
