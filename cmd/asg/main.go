@@ -142,7 +142,7 @@ func (printEvents) ToolStart(c llm.ToolCall, s string) {
 }
 func (printEvents) ToolEnd(llm.ToolCall, string, bool) {}
 func (printEvents) Notice(m string)                    { fmt.Fprintln(os.Stderr, "!", m) }
-func (printEvents) Approve(context.Context, llm.ToolCall, string) agent.Decision {
+func (printEvents) Approve(context.Context, llm.ToolCall, agent.Gate) agent.Decision {
 	fmt.Fprintln(os.Stderr, "! tool denied (run with -yolo to allow tools in -p mode)")
 	return agent.Deny
 }

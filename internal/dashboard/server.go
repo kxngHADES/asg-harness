@@ -4,6 +4,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
@@ -25,10 +26,16 @@ import (
 	"github.com/kxngHADES/asg-harness/internal/audio"
 	"github.com/kxngHADES/asg-harness/internal/config"
 	"github.com/kxngHADES/asg-harness/internal/llm"
+	"github.com/kxngHADES/asg-harness/internal/sprite"
 )
 
 //go:embed static/index.html
 var static embed.FS
+
+// petHTML is the mascot, generated from the same pixel art the terminal
+// draws: an idle and a working animation, swapped by the page's busy state.
+var petHTML = `<span class="pet idle" aria-hidden="true">` + sprite.SVG(sprite.Idle, 140, 4) +
+	`</span><span class="pet work" aria-hidden="true">` + sprite.SVG(sprite.Work, 110, 4) + `</span>`
 
 const mask = "••••"
 
@@ -130,7 +137,7 @@ func (s *Server) handler() http.Handler {
 		data, _ := static.ReadFile("static/index.html")
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		w.Write(data)
+		w.Write(bytes.Replace(data, []byte("<!--ASG_PET-->"), []byte(petHTML), 1))
 	})
 	api := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.guard(h)) }
 	api("GET /api/state", s.state)
@@ -325,7 +332,7 @@ func (e *sseEvents) ToolStart(c llm.ToolCall, summary string) {
 func (e *sseEvents) ToolEnd(c llm.ToolCall, result string, isErr bool) {
 	e.send(map[string]any{"type": "tool_end", "id": c.ID, "name": c.Name, "result": result, "error": isErr})
 }
-func (e *sseEvents) Approve(ctx context.Context, c llm.ToolCall, summary string) agent.Decision {
+func (e *sseEvents) Approve(ctx context.Context, c llm.ToolCall, gate agent.Gate) agent.Decision {
 	e.mu.Lock()
 	e.n++
 	id := fmt.Sprintf("a%d-%d", time.Now().UnixNano(), e.n)
@@ -339,7 +346,7 @@ func (e *sseEvents) Approve(ctx context.Context, c llm.ToolCall, summary string)
 		delete(e.ws.approvals, id)
 		e.ws.mu.Unlock()
 	}()
-	e.send(map[string]any{"type": "approval", "id": id, "name": c.Name, "summary": summary, "args": c.Args})
+	e.send(map[string]any{"type": "approval", "id": id, "name": c.Name, "summary": gate.Summary, "scope": gate.Scope, "args": c.Args})
 	select {
 	case d := <-ch:
 		return d
@@ -431,6 +438,8 @@ func (s *Server) approve(w http.ResponseWriter, r *http.Request) {
 		d = agent.Allow
 	case "always":
 		d = agent.AlwaysAllow
+	case "always_global":
+		d = agent.AlwaysAllowGlobal
 	}
 	ch <- d
 	writeJSON(w, map[string]bool{"ok": true})

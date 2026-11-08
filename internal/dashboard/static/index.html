@@ -129,6 +129,13 @@ textarea { resize: vertical; }
 .approval .gate { font: 800 11px/1 var(--mono); letter-spacing: .16em; color: var(--warn); margin-bottom: 8px; }
 .approval pre { background: var(--paper); border: 2px solid var(--line); padding: 8px 10px; margin: 8px 0 12px; max-height: 220px; overflow: auto; white-space: pre-wrap; }
 .approval .row { align-items: center; }
+.petbox { display: inline-flex; vertical-align: middle; margin-right: 8px; }
+.pet { display: inline-flex; }
+.pet svg { display: block; height: 28px; width: auto; }
+.pet.work, body.busy .pet.idle { display: none; }
+body.busy .pet.work { display: inline-flex; }
+.empty .crab { margin-bottom: 18px; }
+.empty .crab .pet svg { height: 112px; }
 .empty { margin: 12vh auto 0; text-align: left; max-width: 560px; }
 .empty .big { font: 900 clamp(64px, 12vw, 120px)/.85 var(--sans); letter-spacing: -.06em; }
 .empty .big span { background: var(--accent); color: var(--accent-ink); padding: 0 .08em; border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink); display: inline-block; }
@@ -209,7 +216,7 @@ dialog pre { white-space: pre-wrap; background: var(--code); border: 2px solid v
 </aside>
 <div class="stage">
 <header class="strip">
-  <div class="crumb"><span>ASG /</span> <b id="crumb">Chat</b></div>
+  <div class="crumb"><span class="petbox" title="ASG"><!--ASG_PET--></span><span>ASG /</span> <b id="crumb">Chat</b></div>
   <div class="spacer"></div>
   <label class="chip">via<select id="quickProvider" title="Active provider"></select></label>
   <label class="chip">model<select id="quickModel" title="Model"></select></label>
@@ -774,7 +781,7 @@ async function speak(text) {
 
 function showEmpty() {
   if (msgs.children.length) return;
-  msgs.innerHTML = `<div class="empty"><div class="big"><span>ASG</span></div>
+  msgs.innerHTML = `<div class="empty"><div class="crab">${document.querySelector(".petbox")?.innerHTML || ""}</div><div class="big"><span>ASG</span></div>
     <div class="tag">signal console · ${esc(STATE?.config.providers[STATE.config.active_provider]?.model || "")}</div>
     <div class="suggest">${["Explain this project's structure", "Find TODOs in this repo", "What's in this screenshot?"].map(t => `<button>${t}</button>`).join("")}</div></div>`;
   msgs.querySelectorAll(".suggest button").forEach(b => b.onclick = () => { $("input").value = b.textContent; autosize(); $("input").focus(); });
@@ -850,7 +857,7 @@ async function send() {
           case "approval": {
             if (cur) { cur.classList.remove("typing"); cur = null; }
             const a = addEl("approval", `<div class="gate">▛ GATE · ${esc(ev.name.toUpperCase())} REQUESTS PERMISSION</div><pre>${esc(argsPreview(ev.name, ev.args) || ev.summary)}</pre>
-              <div class="row"><button class="btn primary" data-d="allow">Run</button><button class="btn" data-d="always">Always ${esc(ev.name)}</button><button class="btn danger" data-d="deny">Block</button></div>`);
+              <div class="row"><button class="btn primary" data-d="allow">Run</button>${ev.scope ? `<button class="btn" data-d="always" title="Remembered for this project in future sessions">Always ${esc(ev.scope)} here</button><button class="btn" data-d="always_global" title="Remembered in every project">Always ${esc(ev.scope)} everywhere</button>` : ""}<button class="btn danger" data-d="deny">Block</button></div>`);
             a.querySelectorAll("button").forEach(b => b.onclick = async () => {
               a.querySelectorAll("button").forEach(x => x.disabled = true);
               try { await api("POST", "/api/approve", { session_id: SESSION, id: ev.id, decision: b.dataset.d }); a.querySelector(".row").innerHTML = `<span class="pill ${b.dataset.d === "deny" ? "warn" : "on"}">${b.dataset.d === "deny" ? "blocked" : "allowed"}</span>`; }
@@ -882,7 +889,7 @@ async function send() {
 }
 
 function setBusy(b) {
-  busy = b; $("send").disabled = b; $("stop").hidden = !b; $("status").textContent = b ? "working…" : "";
+  busy = b; document.body.classList.toggle("busy", b); $("send").disabled = b; $("stop").hidden = !b; $("status").textContent = b ? "working…" : "";
 }
 $("send").onclick = send;
 $("stop").onclick = () => { api("POST", "/api/stop", { session_id: SESSION }).catch(() => {}); stopSpeech(); };
