@@ -63,6 +63,9 @@ func (o *Ollama) Chat(ctx context.Context, req Request, onText func(string)) (*R
 	if req.Temperature != nil {
 		opts["temperature"] = *req.Temperature
 	}
+	if req.NumCtx > 0 {
+		opts["num_ctx"] = req.NumCtx
+	}
 	if len(opts) > 0 {
 		body["options"] = opts
 	}

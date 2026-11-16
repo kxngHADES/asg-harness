@@ -26,7 +26,26 @@ func (q *inputQueue) Read(p []byte) (int, error) {
 		return n, nil
 	}
 	q.mu.Unlock()
-	return q.r.Read(p)
+	n, err := q.r.Read(p)
+	markShiftTab(p[:n])
+	return n, err
+}
+
+// keyShiftTab stands in for Shift+Tab (ESC [ Z). The line editor reports
+// every unrecognised escape sequence as the same "unknown" key, so the
+// sequence is rewritten on the way in to a private-use rune it passes
+// through to the key callback. Both encodings are three bytes long.
+const keyShiftTab = '\uE0F1'
+
+var shiftTabSeq, shiftTabRune = []byte("\x1b[Z"), []byte(string(keyShiftTab))
+
+func markShiftTab(b []byte) {
+	for i := 0; i+len(shiftTabSeq) <= len(b); i++ {
+		if b[i] == 0x1b && b[i+1] == '[' && b[i+2] == 'Z' {
+			copy(b[i:], shiftTabRune)
+			i += len(shiftTabRune) - 1
+		}
+	}
 }
 
 // unread puts bytes back in front of the queue.
@@ -105,7 +124,7 @@ func parseKey(b []byte) (key, int) {
 		return key{kind: kDown}, 1
 	}
 	r, size := utf8.DecodeRune(b)
-	if r < 0x20 || r == utf8.RuneError {
+	if r < 0x20 || r == utf8.RuneError || r == keyShiftTab {
 		return key{kind: kOther}, max(size, 1)
 	}
 	return key{kind: kRune, r: r}, size

@@ -56,6 +56,8 @@ type Request struct {
 	Tools       []ToolSpec
 	Temperature *float64
 	MaxTokens   int
+	// NumCtx asks Ollama for this context window; other providers ignore it.
+	NumCtx int
 }
 
 type Usage struct {

@@ -171,34 +171,42 @@ func bashTool() *Tool {
 			if args.Timeout <= 0 {
 				args.Timeout = 120
 			}
-			ctx, cancel := context.WithTimeout(ctx, time.Duration(int(args.Timeout))*time.Second)
-			defer cancel()
-			var cmd *exec.Cmd
-			if runtime.GOOS == "windows" {
-				cmd = exec.CommandContext(ctx, "cmd", "/C", args.Command)
-			} else {
-				shell := os.Getenv("SHELL")
-				if shell == "" {
-					shell = "/bin/sh"
-				}
-				cmd = exec.CommandContext(ctx, shell, "-c", args.Command)
-			}
-			var buf bytes.Buffer
-			cmd.Stdout, cmd.Stderr = &buf, &buf
-			err = cmd.Run()
-			out := truncate(buf.String())
-			if ctx.Err() == context.DeadlineExceeded {
-				return out + "\n[timed out]", nil
-			}
-			if err != nil {
-				return fmt.Sprintf("%s\n[exit: %v]", out, err), nil
-			}
-			if out == "" {
-				out = "(no output)"
-			}
+			out, _ := RunShell(ctx, args.Command, time.Duration(int(args.Timeout))*time.Second)
 			return out, nil
 		},
 	}
+}
+
+// RunShell runs a command in the platform shell and returns its combined
+// output, annotated with the exit status the way the bash tool reports it.
+// ok is false when the command failed or timed out.
+func RunShell(ctx context.Context, command string, timeout time.Duration) (out string, ok bool) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+	} else {
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/sh"
+		}
+		cmd = exec.CommandContext(ctx, shell, "-c", command)
+	}
+	var buf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &buf, &buf
+	err := cmd.Run()
+	out = truncate(buf.String())
+	if ctx.Err() == context.DeadlineExceeded {
+		return out + "\n[timed out]", false
+	}
+	if err != nil {
+		return fmt.Sprintf("%s\n[exit: %v]", out, err), false
+	}
+	if out == "" {
+		out = "(no output)"
+	}
+	return out, true
 }
 
 func readTool() *Tool {
