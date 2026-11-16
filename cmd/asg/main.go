@@ -28,6 +28,7 @@ const usage = `asg — signal console for Ollama, Anthropic and OpenAI models
 Usage:
   asg                        interactive terminal agent
   asg -p "prompt" [img...]   run one prompt and print the answer ("-" reads stdin)
+  asg -loop -yolo -p "goal"  run an objective with the loop harness, unattended
   asg dashboard              web version: run the browser dashboard
   asg skill add <source>     import skills (path, URL, github:owner/repo[/path])
   asg skill list|rm <name>
@@ -42,6 +43,9 @@ func main() {
 	model := flag.String("model", "", "model to use for this run")
 	prompt := flag.String("p", "", "run a single prompt non-interactively")
 	yolo := flag.Bool("yolo", false, "auto-approve all tool calls for this run")
+	mode := flag.String("mode", "build", "starting mode: build, plan, ask or loop")
+	loop := flag.Bool("loop", false, "with -p: treat the prompt as an objective for the loop harness")
+	verify := flag.String("verify", "", "with -loop: command that proves the work (\"none\" to skip; default auto-detect)")
 	noOpen := flag.Bool("no-open", false, "with 'dashboard': don't open a browser")
 	showVersion := flag.Bool("version", false, "print the version")
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage); flag.PrintDefaults() }
@@ -88,6 +92,13 @@ func main() {
 		}
 	}
 	app.Yolo = *yolo
+	startMode, ok := agent.ParseMode(*mode)
+	if !ok {
+		fatal(fmt.Errorf("unknown -mode %q (build, plan, ask or loop)", *mode))
+	}
+	if *loop {
+		startMode = agent.ModeLoop
+	}
 
 	switch {
 	case len(args) > 0 && args[0] == "dashboard":
@@ -95,9 +106,11 @@ func main() {
 	case len(args) > 0 && args[0] == "skill":
 		skillCmd(app, args[1:])
 	case *prompt != "":
-		oneShot(app, *prompt, args)
+		oneShot(app, *prompt, args, startMode, *verify)
 	default:
-		if err := tui.New(app).Run(); err != nil {
+		r := tui.New(app)
+		r.SetMode(startMode)
+		if err := r.Run(); err != nil {
 			fatal(err)
 		}
 	}
@@ -146,8 +159,14 @@ func (printEvents) Approve(context.Context, llm.ToolCall, agent.Gate) agent.Deci
 	fmt.Fprintln(os.Stderr, "! tool denied (run with -yolo to allow tools in -p mode)")
 	return agent.Deny
 }
+func (printEvents) LoopUpdate(st *agent.LoopState, msg string) {
+	fmt.Fprintf(os.Stderr, "\n⟳ %s\n", msg)
+	if strings.HasPrefix(msg, "plan ready") || st.Status != agent.LoopRunning {
+		fmt.Fprint(os.Stderr, st.Checklist())
+	}
+}
 
-func oneShot(app *agent.App, prompt string, imgs []string) {
+func oneShot(app *agent.App, prompt string, imgs []string, mode agent.Mode, verify string) {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	msg := llm.Message{Content: prompt}
@@ -165,7 +184,20 @@ func oneShot(app *agent.App, prompt string, imgs []string) {
 		}
 		msg.Content = string(data)
 	}
-	if _, err := app.NewSession().Send(ctx, msg, printEvents{}); err != nil {
+	sess := app.NewSession()
+	sess.Mode = mode
+	if mode == agent.ModeLoop {
+		st, err := sess.RunLoop(ctx, msg.Content, agent.LoopOptions{Verify: verify}, printEvents{})
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Println("\n" + agent.LoopSummary(st))
+		if st.Status != agent.LoopDone {
+			os.Exit(2)
+		}
+		return
+	}
+	if _, err := sess.Send(ctx, msg, printEvents{}); err != nil {
 		fatal(err)
 	}
 	fmt.Println()

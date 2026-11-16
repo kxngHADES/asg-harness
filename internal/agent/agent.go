@@ -5,6 +5,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -93,6 +94,12 @@ type Session struct {
 	allowed map[string]bool
 	Usage   llm.Usage
 	noTools bool // set when the model rejects tool definitions
+
+	// Mode decides which tools the model gets and how it is instructed.
+	Mode Mode
+	// Plan is the latest plan written in plan mode, and PlanGoal the request
+	// that produced it. Build mode keeps the plan in view; /loop can run it.
+	Plan, PlanGoal string
 }
 
 func (a *App) NewSession() *Session {
@@ -105,10 +112,14 @@ func (s *Session) Clear() {
 	s.History = nil
 	s.Usage = llm.Usage{}
 	s.noTools = false
+	s.Plan, s.PlanGoal = "", ""
 }
 
-// SystemPrompt builds the system prompt for the current directory and skills.
-func (s *Session) SystemPrompt() string {
+// SystemPrompt builds the system prompt for the current directory, skills
+// and mode.
+func (s *Session) SystemPrompt() string { return s.systemPrompt(s.Mode, "") }
+
+func (s *Session) systemPrompt(mode Mode, extra string) string {
 	cfg := s.app.Config.Get()
 	cwd, _ := os.Getwd()
 	var b strings.Builder
@@ -133,6 +144,11 @@ Keep answers concise and use Markdown. When you change files, say what you chang
 	if cfg.SystemPrompt != "" {
 		b.WriteString("\n" + cfg.SystemPrompt + "\n")
 	}
+	b.WriteString(mode.instructions())
+	if mode.orBuild() == ModeBuild && s.Plan != "" && extra == "" {
+		fmt.Fprintf(&b, "\n\n## Current plan (from plan mode)\nGoal: %s\n%s\nWork through it in order. After each step check the result (read the file back, build or run tests) before moving on.\n", s.PlanGoal, clip(s.Plan, 4000))
+	}
+	b.WriteString(extra)
 	return b.String()
 }
 
@@ -181,31 +197,78 @@ func (s *Session) toolset() []*tools.Tool {
 func (s *Session) Send(ctx context.Context, user llm.Message, ev Events) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	cfg := s.app.Config.Get()
+	mode := s.Mode
+	if mode == ModeLoop { // a plain Send in loop mode (e.g. the dashboard) builds
+		mode = ModeBuild
+	}
+	reply, err := s.send(ctx, user, ev, turnOpts{mode: mode, maxRounds: cfg.MaxToolRounds})
+	if errors.Is(err, errRoundLimit) {
+		ev.Notice(fmt.Sprintf("stopped after %d tool rounds (raise max_tool_rounds in config)", cfg.MaxToolRounds))
+		return "", nil
+	}
+	if err == nil && mode == ModePlan && len(ParseSteps(reply)) > 0 {
+		s.Plan, s.PlanGoal = reply, user.Content
+	}
+	return reply, err
+}
 
+// errRoundLimit means a turn used every tool round without finishing.
+var errRoundLimit = errors.New("tool round limit reached")
+
+// turnOpts tunes one turn; the loop harness uses it for its planner,
+// worker and reviewer turns.
+type turnOpts struct {
+	mode        Mode
+	extra       string // appended to the system prompt
+	system      string // replaces the system prompt entirely when set
+	maxRounds   int
+	noTools     bool
+	temperature *float64
+	// onTool, when set, is told about every finished tool call.
+	onTool func(call llm.ToolCall, summary, result string, isErr bool)
+}
+
+// repeatLimit is how many identical tool calls a turn may make before the
+// harness stops running them and tells the model to change course. Small
+// models otherwise loop on the same read or the same failing command.
+const repeatLimit = 3
+
+func (s *Session) send(ctx context.Context, user llm.Message, ev Events, o turnOpts) (string, error) {
 	cfg := s.app.Config.Get()
 	provider, model, err := s.app.Provider()
 	if err != nil {
 		return "", err
 	}
+	_, pc := cfg.Active()
 	user.Role = llm.RoleUser
 	s.History = append(s.History, user)
 
-	toolset := s.toolset()
 	byName := map[string]*tools.Tool{}
 	var specs []llm.ToolSpec
-	for _, t := range toolset {
-		byName[t.Spec.Name] = t
-		specs = append(specs, t.Spec)
+	for _, t := range s.toolset() {
+		if o.mode.allows(t) {
+			byName[t.Spec.Name] = t
+			specs = append(specs, t.Spec)
+		}
 	}
-	system := s.SystemPrompt()
+	system := o.system
+	if system == "" {
+		system = s.systemPrompt(o.mode, o.extra)
+	}
+	temp := cfg.Temperature
+	if o.temperature != nil {
+		temp = o.temperature
+	}
+	seen := map[string]int{}
 
-	for round := 0; round < cfg.MaxToolRounds; round++ {
-		req := llm.Request{Model: model, System: system, Messages: s.History, Temperature: cfg.Temperature}
-		if !s.noTools {
+	for round := 0; round < max(o.maxRounds, 1); round++ {
+		req := llm.Request{Model: model, System: system, Messages: s.History, Temperature: temp, NumCtx: numCtx(pc)}
+		if !s.noTools && !o.noTools {
 			req.Tools = specs
 		}
 		resp, err := provider.Chat(ctx, req, ev.Text)
-		if err != nil && !s.noTools && strings.Contains(err.Error(), "does not support tools") {
+		if err != nil && req.Tools != nil && strings.Contains(err.Error(), "does not support tools") {
 			s.noTools = true
 			ev.Notice(fmt.Sprintf("%s does not support tool calling — continuing in chat-only mode", model))
 			req.Tools = nil
@@ -225,13 +288,31 @@ func (s *Session) Send(ctx context.Context, user llm.Message, ev Events) (string
 		s.Usage.InputTokens = resp.Usage.InputTokens
 		s.Usage.OutputTokens += resp.Usage.OutputTokens
 		msg := resp.Message
+		if len(msg.ToolCalls) == 0 && req.Tools != nil {
+			// Small models often write the call out as text instead of
+			// making it. Recover it rather than ending the turn early.
+			msg.ToolCalls = recoverToolCalls(msg.Content, byName)
+		}
 		s.History = append(s.History, msg)
 		if len(msg.ToolCalls) == 0 {
 			return msg.Content, nil
 		}
 
 		for i, call := range msg.ToolCalls {
-			result := s.runTool(ctx, call, byName, cfg.AutoApprove || s.app.Yolo, ev)
+			sig := call.Name + "\x00" + canonicalArgs(call.Args)
+			seen[sig]++
+			var result string
+			var isErr bool
+			if seen[sig] > repeatLimit {
+				result = fmt.Sprintf("Not run: you already made this exact %s call %d times and the result will not change. Use what you learned, try a different approach, or give your answer.", call.Name, seen[sig]-1)
+				isErr = true
+				ev.ToolEnd(call, "skipped: same call repeated", true)
+			} else {
+				result, isErr = s.runTool(ctx, call, byName, cfg.AutoApprove || s.app.Yolo, ev)
+			}
+			if o.onTool != nil {
+				o.onTool(call, describeCall(byName[call.Name], call), result, isErr)
+			}
 			s.History = append(s.History, llm.Message{Role: llm.RoleTool, Content: result, ToolCallID: call.ID, ToolName: call.Name})
 			if ctx.Err() != nil {
 				// Answer the remaining calls so the history stays well-formed.
@@ -242,21 +323,40 @@ func (s *Session) Send(ctx context.Context, user llm.Message, ev Events) (string
 			}
 		}
 	}
-	ev.Notice(fmt.Sprintf("stopped after %d tool rounds (raise max_tool_rounds in config)", cfg.MaxToolRounds))
-	return "", nil
+	return "", errRoundLimit
 }
 
-func (s *Session) runTool(ctx context.Context, call llm.ToolCall, byName map[string]*tools.Tool, auto bool, ev Events) string {
+// numCtx is the Ollama context window to request for a provider.
+func numCtx(pc *config.ProviderConfig) int {
+	if pc == nil || pc.Type != "ollama" || pc.NumCtx < 0 {
+		return 0
+	}
+	if pc.NumCtx == 0 {
+		return config.DefaultNumCtx
+	}
+	return pc.NumCtx
+}
+
+func describeCall(t *tools.Tool, call llm.ToolCall) string {
+	if t == nil || t.Describe == nil {
+		return ""
+	}
+	return t.Describe(call.Args)
+}
+
+// runTool runs one call through the permission gate and returns the result
+// text and whether the call failed.
+func (s *Session) runTool(ctx context.Context, call llm.ToolCall, byName map[string]*tools.Tool, auto bool, ev Events) (string, bool) {
 	t := byName[call.Name]
 	if t == nil {
 		msg := fmt.Sprintf("error: unknown tool %q", call.Name)
+		if s.app.Tools != nil && s.app.Tools.Get(call.Name) != nil {
+			msg = fmt.Sprintf("error: %s is switched off in this mode (read-only). Use the read-only tools, then give your answer.", call.Name)
+		}
 		ev.ToolEnd(call, msg, true)
-		return msg
+		return msg, true
 	}
-	summary := ""
-	if t.Describe != nil {
-		summary = t.Describe(call.Args)
-	}
+	summary := describeCall(t, call)
 	if t.NeedsApproval && !auto {
 		cwd, _ := os.Getwd()
 		rules, rerr := perms.RulesFor(call.Name, call.Args)
@@ -269,7 +369,7 @@ func (s *Session) runTool(ctx context.Context, call llm.ToolCall, byName map[str
 			d := ev.Approve(ctx, call, gate)
 			if d == Deny {
 				ev.ToolEnd(call, "denied", true)
-				return "The user denied this tool call. Ask them how to proceed instead of retrying."
+				return "The user denied this tool call. Ask them how to proceed instead of retrying.", true
 			}
 			if rerr == nil && (d == AlwaysAllow || d == AlwaysAllowGlobal) {
 				s.allowed[key] = true
@@ -284,8 +384,16 @@ func (s *Session) runTool(ctx context.Context, call llm.ToolCall, byName map[str
 	if err != nil {
 		msg := "error: " + err.Error()
 		ev.ToolEnd(call, msg, true)
-		return msg
+		return msg, true
 	}
 	ev.ToolEnd(call, out, false)
-	return out
+	return out, false
+}
+
+func clip(s string, n int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }

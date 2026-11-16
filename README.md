@@ -44,6 +44,8 @@ gemma4:31b-cloud ▸ why is the build failing? [Image #1]
 | | |
 |---|---|
 | **Tool calling** | bash, read / write / edit files, glob, grep, web fetch, skills. Anything that changes state goes through a **GATE** you approve. |
+| **Modes** | **Shift+Tab** cycles *build* → *plan* → *loop* → *ask*. **Ctrl+Y** toggles YOLO (no approval prompts). |
+| **Loop harness** | `/loop <objective>` plans, works one small step at a time, has each step reviewed, runs your tests, and repeats until done. Built to make 7–14B local models (e.g. Qwen3.5 9B) finish real tasks. |
 | **Images** | **Ctrl+V** pastes a clipboard image, drag a file into the terminal, or type `@shot.png`. You can also paste or drop images in the browser. |
 | **Voice** | Replies are read aloud by the current model if it can speak, or by a speech model you choose (e.g. `phonon` as *Juniper*), the OS voice, or OpenAI TTS. |
 | **Skills** | Import `SKILL.md` skills from GitHub, URLs, or folders. The model loads a skill when it's relevant. |
@@ -150,7 +152,56 @@ asg -p "summarise this repo in 5 bullets"
 asg -p "what's wrong in this screenshot?" error.png
 git diff | asg -p -                                # "-" reads the prompt from stdin
 asg -yolo -p "run the tests and fix what fails"    # one-shot mode denies gated tools unless -yolo
+asg -loop -yolo -p "add a --json flag to list, with tests"   # unattended loop run; exits 2 unless it finishes
 ```
+
+---
+
+## ▸ Working modes
+
+Press **Shift+Tab** to cycle modes, or use `/mode`. The prompt shows the current mode (build has no badge).
+
+| Mode | Tools | Use it to |
+|---|---|---|
+| **build** | all, behind gates | make changes — the default |
+| **plan** | read-only | investigate and get a numbered plan; nothing is changed. Afterwards `/loop` runs the plan step by step, or switch to build and the plan stays in view |
+| **loop** | all, behind gates | each message is an objective for the loop harness (below) |
+| **ask** | read-only | questions about the code, answered from the actual files |
+
+`/plan <request>`, `/build <request>`, `/ask <question>` switch and send in one go. `asg -mode plan` starts in a mode.
+
+**YOLO.** **Ctrl+Y** (or `/yolo`) toggles running tools without asking; the prompt shows `⚡yolo` while it is on. At a GATE, Ctrl+Y turns YOLO on *and* approves the waiting call. YOLO lasts until you toggle it off or quit, so it never sticks around by accident.
+
+## ▸ Loop harness
+
+Small models fall over on long tasks: context fills up, they lose the thread, claim success without checking, or repeat the same call. The loop harness gives the model *operational discipline* instead — the harness, not the model, decides what happens next:
+
+```
+objective ─► PLAN (read-only look around → numbered steps)
+             │
+             ▼
+      ┌─► WORK on ONE step   fresh short context: objective, ✓/▶ checklist, notes from earlier steps
+      │      │
+      │   REVIEW             separate no-tools call judges the step from tool results, not claims
+      │      ├─ pass → next step
+      │      ├─ fail → retry with the reviewer's feedback (3×) → split into smaller steps → ask you
+      │      └─ BLOCKED: question → stops and asks you
+      └──────┘
+             ▼  all steps done
+         VERIFY              runs your test/build command; failures become a "fix" step (up to 3×)
+```
+
+```text
+/loop add a --json flag to the list command, with tests    start
+/loop                    run the plan you just made in plan mode
+/loop status             checklist and state of the saved run
+/loop resume [answer]    continue after Ctrl+C, a question, or a restart
+/loop verify <cmd>       set the check command (auto · none)
+```
+
+The check command is auto-detected (`go test`, `cargo test`, `npm test`, `pytest`, `make test`) or set with `/loop verify`. Runs are saved after every step in `~/.asg/loops/`, never in your repo. Every tool call still goes through the normal gates unless YOLO is on.
+
+**Small-model helpers** that apply in every mode: tool calls written out as text (`<tool_call>{…}</tool_call>`, a JSON block) are recovered and run; a fourth identical tool call in one turn is refused with a nudge to change course; and Ollama gets a 16K context window (`num_ctx`) instead of its small default, which otherwise silently truncates the system prompt and tool output.
 
 ---
 
@@ -210,12 +261,13 @@ Manage providers in the dashboard, or edit `~/.asg/config.json` (`$ASG_HOME` ove
 {
   "active_provider": "ollama",
   "providers": {
-    "ollama":     { "type": "ollama",    "base_url": "http://localhost:11434",        "model": "llama3.1:8b" },
+    "ollama":     { "type": "ollama",    "base_url": "http://localhost:11434",        "model": "qwen3.5:9b", "num_ctx": 16384 },
     "anthropic":  { "type": "anthropic", "base_url": "https://api.anthropic.com",     "api_key": "sk-ant-…", "model": "claude-sonnet-5-5" },
     "openai":     { "type": "openai",    "base_url": "https://api.openai.com/v1",     "api_key": "sk-…",     "model": "gpt-5" },
     "openrouter": { "type": "openai",    "base_url": "https://openrouter.ai/api/v1",  "api_key": "sk-or-…",  "model": "…" }
   },
   "auto_approve": false,
+  "loop": { "max_iterations": 30, "step_attempts": 3, "step_rounds": 15, "verify": "" },
   "audio": {
     "enabled": true,
     "engine": "auto",
@@ -225,7 +277,7 @@ Manage providers in the dashboard, or edit `~/.asg/config.json` (`$ASG_HOME` ove
 }
 ```
 
-If a model rejects tool definitions, ASG switches to chat-only mode for it automatically.
+If a model rejects tool definitions, ASG switches to chat-only mode for it automatically. `num_ctx` is the Ollama context window: unset means 16384, a negative value leaves Ollama's default. Lower it if a model no longer fits in VRAM; raise it for long files.
 
 ---
 
@@ -235,6 +287,9 @@ Press **/** on an empty prompt to open the command menu: type to filter, **↑�
 
 | Command | |
 |---|---|
+| `/mode` · **Shift+Tab** | pick or cycle the working mode (build, plan, loop, ask) |
+| `/plan` · `/build` · `/ask [text]` | switch mode, and send the text in it |
+| `/loop …` | run an objective with the loop harness (see *Loop harness*) |
 | `/provider [name]` | pick a provider from a menu (asks for a missing API key), then its model |
 | `/model [name]` · `/models` | pick a model from a menu, set one by name, or list them |
 | `/init` | write or improve `ASG.md` for this project |
@@ -245,7 +300,7 @@ Press **/** on an empty prompt to open the command menu: type to filter, **↑�
 | `/voice …` · `/speak` | voice output: `/voice help` for everything |
 | `/skills` · `/skill add\|rm\|show` | manage skills |
 | `/<skill> <request>` | run a request with a skill |
-| `/tools` · `/yolo` | list tools · toggle auto-approve |
+| `/tools` · `/yolo` · **Ctrl+Y** | list tools · toggle YOLO (run tools without asking) |
 | `/dashboard` | open the web version |
 | `/clear` · `/usage` · `/config` · `/exit` | |
 
@@ -257,7 +312,7 @@ End a line with `\` for multi-line input. Pasted multi-line text arrives as one 
 
 ## ▸ Security
 
-- **Gates.** `bash`, `write_file`, `edit_file` and `web_fetch` ask before running. `[a]`/`[g]` remember your answer per program or tool (see *Remembered permissions*) until you revoke it with `/permissions`, and `-yolo` lasts one run only.
+- **Gates.** `bash`, `write_file`, `edit_file` and `web_fetch` ask before running. `[a]`/`[g]` remember your answer per program or tool (see *Remembered permissions*) until you revoke it with `/permissions`. `-yolo` and Ctrl+Y last until you turn them off or quit; turning YOLO off also clears a saved `auto_approve`. Plan and ask modes don't offer the model any tool that changes your project.
 - **Dashboard.** It listens on **127.0.0.1 only**, and each run gets a random token passed in the URL fragment. Every API call must carry that token, and requests with a non-localhost `Host` are rejected (DNS-rebinding protection). API keys are masked before they reach the browser.
 - **Updates.** Releases and `asg update` are verified against `checksums.txt`.
 

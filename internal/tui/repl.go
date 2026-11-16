@@ -38,6 +38,7 @@ type REPL struct {
 	out     io.Writer // where menus draw
 	fd      int
 	menuOn  bool // '/' on an empty main prompt opens the command menu
+	gating  bool // a permission gate is waiting for an answer
 	pending []attachment
 
 	mu        sync.Mutex
@@ -72,6 +73,11 @@ var commands = []command{
 	{"/help", "", "show this help"},
 	{"/model", "[name]", "pick a model from a menu, or set one by name"},
 	{"/provider", "[name]", "pick a provider (ollama, anthropic, openai, ...) and then its model"},
+	{"/mode", "[build|plan|loop|ask]", "pick how ASG works (or press shift+tab to cycle)"},
+	{"/plan", "[request]", "plan mode: investigate read-only and write a step-by-step plan"},
+	{"/build", "[request]", "build mode: make changes (the default)"},
+	{"/ask", "[question]", "ask mode: read-only questions about your code"},
+	{"/loop", "[objective] | resume [answer] | status | verify <cmd>", "run an objective plan → do → verify → review until done"},
 	{"/dashboard", "", "open the browser dashboard (chat, config, skills)"},
 	{"/init", "", "write an ASG.md describing this project for future sessions"},
 	{"/memory", "[note]", "browse saved memories, or ask ASG to remember something"},
@@ -84,7 +90,7 @@ var commands = []command{
 	{"/skills", "", "list installed skills"},
 	{"/skill", "add <src> | rm <name> | show <name>", "import a skill (path, URL, github:owner/repo[/path]) or remove one"},
 	{"/tools", "", "list tools the model can call"},
-	{"/yolo", "", "toggle auto-approval of tool calls"},
+	{"/yolo", "", "toggle YOLO: run tools without asking (or press ctrl+y)"},
 	{"/config", "", "show config file location and active settings"},
 	{"/usage", "", "show token usage for this session"},
 	{"/clear", "", "start a new conversation"},
@@ -113,8 +119,70 @@ func (r *REPL) banner() {
 		"type " + lime + "/" + reset + " for commands",
 	})
 	r.printf("  %s%s%s\n", slate, strings.Repeat("━", min(termWidth()-4, 60)), reset)
-	r.printf("  %s/%s menu  %s·%s  %sctrl+v%s paste image  %s·%s  %sctrl+c%s stop  %s·%s  %s/dashboard%s web ui\n\n",
-		lime, reset, slate, reset, lime, reset, slate, reset, lime, reset, slate, reset, lime, reset)
+	r.printf("  %s/%s menu  %s·%s  %sshift+tab%s mode  %s·%s  %sctrl+y%s yolo  %s·%s  %sctrl+v%s paste image  %s·%s  %sctrl+c%s stop\n\n",
+		lime, reset, slate, reset, lime, reset, slate, reset, lime, reset, slate, reset, lime, reset, slate, reset, lime, reset)
+}
+
+const keyCtrlY = 25
+
+// modeColor gives each mode a colour of its own in the prompt badge.
+func modeColor(m agent.Mode) string {
+	switch m {
+	case agent.ModePlan:
+		return cyan
+	case agent.ModeAsk:
+		return magenta
+	case agent.ModeLoop:
+		return amber
+	}
+	return lime
+}
+
+// yolo reports whether tool calls currently run without asking.
+func (r *REPL) yolo() bool { return r.app.Yolo || r.app.Config.Get().AutoApprove }
+
+// toggleYolo flips YOLO for this run. Turning it off also clears a saved
+// auto_approve so "off" always means off.
+func (r *REPL) toggleYolo() bool {
+	if r.yolo() {
+		r.app.Yolo = false
+		if r.app.Config.Get().AutoApprove {
+			r.update(func(c *config.Config) error { c.AutoApprove = false; return nil })
+		}
+		return false
+	}
+	r.app.Yolo = true
+	return true
+}
+
+func (r *REPL) yoloLine(on bool) string {
+	if on {
+		return fmt.Sprintf("  %s%s⚡ YOLO ON %s %stools run without asking until you press ctrl+y again%s\n", bold, onAmber, reset, amber, reset)
+	}
+	return fmt.Sprintf("  %sYOLO off — tool calls ask first%s\n", slate, reset)
+}
+
+func (r *REPL) setMode(m agent.Mode) {
+	r.sess.Mode = m
+}
+
+// SetMode picks the mode the session starts in (the -mode flag).
+func (r *REPL) SetMode(m agent.Mode) { r.setMode(m) }
+
+func (r *REPL) modeLine() string {
+	m := r.mode()
+	extra := ""
+	if m == agent.ModeLoop && r.sess.Plan != "" {
+		extra = fmt.Sprintf(" %s· /loop runs the plan you just made%s", slate, reset)
+	}
+	return fmt.Sprintf("  %s%s %s mode %s %s%s%s%s\n", bold, onColor(modeColor(m)), strings.ToUpper(string(m)), reset, slate, m.Describe(), reset, extra)
+}
+
+func (r *REPL) mode() agent.Mode {
+	if r.sess == nil || r.sess.Mode == "" {
+		return agent.ModeBuild
+	}
+	return r.sess.Mode
 }
 
 // Run starts the read-eval-print loop.
@@ -189,6 +257,12 @@ func (r *REPL) prompt() string {
 		model = model[:21] + "…"
 	}
 	p := slate + model + " " + reset + lime + bold + "▸ " + reset
+	if m := r.mode(); m != agent.ModeBuild {
+		p = modeColor(m) + bold + string(m) + reset + " " + p
+	}
+	if r.yolo() {
+		p = amber + bold + "⚡yolo" + reset + " " + p
+	}
 	if n := len(r.pending); n > 0 {
 		p = fmt.Sprintf("%s▣ %d img%s %s", magenta, n, reset, p)
 	}
@@ -233,6 +307,28 @@ func (r *REPL) readInput() (string, error) {
 // onKey handles Ctrl+V image paste and Tab completion of slash commands.
 func (r *REPL) onKey(line string, pos int, key rune) (string, int, bool) {
 	switch key {
+	case keyShiftTab:
+		if r.gating {
+			return line, pos, true
+		}
+		r.setMode(r.mode().Next())
+		r.t.SetPrompt(r.prompt())
+		fmt.Fprint(r.t, r.modeLine()) // writing redraws the prompt and line
+		return line, pos, true
+	case keyCtrlY:
+		on := r.toggleYolo()
+		if r.gating {
+			fmt.Fprint(r.t, r.yoloLine(on)) // keep the gate's own prompt
+			if !on {
+				return line, pos, true
+			}
+			// At a permission gate, ctrl+y also approves the waiting call.
+			r.in.unread([]byte{'\r'})
+			return "y", 1, true
+		}
+		r.t.SetPrompt(r.prompt())
+		fmt.Fprint(r.t, r.yoloLine(on))
+		return line, pos, true
 	case '/':
 		if r.menuOn && line == "" {
 			return r.slashMenu()
@@ -319,7 +415,54 @@ func (r *REPL) send(text string) {
 	if strings.TrimSpace(msg.Content) == "" && len(msg.Images) > 0 {
 		msg.Content = "Describe this image."
 	}
+	if r.mode() == agent.ModeLoop {
+		if len(msg.Images) > 0 {
+			r.printf("  %s! images are not passed to loop runs — describe what matters in the objective%s\n", amber, reset)
+		}
+		r.loop(msg.Content, agent.LoopOptions{})
+		return
+	}
 	r.run(msg)
+}
+
+// loop runs the loop harness on an objective (or resumes a saved run).
+func (r *REPL) loop(objective string, opt agent.LoopOptions) {
+	r.app.Speaker.Stop()
+	fmt.Println()
+	r.md = newMDStream()
+	r.spin = startSpinner("starting loop")
+	start := time.Now()
+	_, err := r.withCancel(func(ctx context.Context) (string, error) {
+		_, err := r.sess.RunLoop(ctx, objective, opt, r)
+		return "", err
+	})
+	r.spin.Stop()
+	r.md.Flush()
+	switch {
+	case errors.Is(err, context.Canceled):
+		r.printf("  %s■ loop paused%s %s— /loop resume picks up where it stopped%s\n\n", amber, reset, slate, reset)
+		return
+	case err != nil:
+		r.printf("  %s✕ %v%s\n\n", red, err, reset)
+		return
+	}
+	u := r.sess.Usage
+	r.printf("  %s── loop %.0fs · %d↓ tokens generated ──%s\n\n", slate, time.Since(start).Seconds(), u.OutputTokens, reset)
+}
+
+// withCancel runs fn with a context that Ctrl+C cancels.
+func (r *REPL) withCancel(fn func(ctx context.Context) (string, error)) (string, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	r.mu.Lock()
+	r.cancel = cancel
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		r.cancel = nil
+		r.mu.Unlock()
+		cancel()
+	}()
+	return fn(ctx)
 }
 
 func (r *REPL) run(msg llm.Message) {
@@ -351,7 +494,12 @@ func (r *REPL) run(msg llm.Message) {
 		return
 	}
 	u := r.sess.Usage
-	r.printf("  %s── %.1fs · %d↑ %d↓ tokens ──%s\n\n", slate, time.Since(start).Seconds(), u.InputTokens, u.OutputTokens, reset)
+	r.printf("  %s── %.1fs · %d↑ %d↓ tokens ──%s\n", slate, time.Since(start).Seconds(), u.InputTokens, u.OutputTokens, reset)
+	if r.mode() == agent.ModePlan && r.sess.Plan != "" && reply == r.sess.Plan {
+		r.printf("  %splan saved · %s/loop%s%s runs it step by step with checks · %sshift+tab%s%s to build mode works through it with you%s\n",
+			slate, lime, reset, slate, lime, reset, slate, reset)
+	}
+	r.printf("\n")
 	r.lastReply = reply
 	if r.app.Config.Get().Audio.Enabled {
 		r.speak(reply)
@@ -400,6 +548,43 @@ func (r *REPL) Notice(msg string) {
 	r.printf("  %s! %s%s\n", amber, msg, reset)
 }
 
+// LoopUpdate draws loop harness progress (agent.LoopEvents).
+func (r *REPL) LoopUpdate(st *agent.LoopState, msg string) {
+	r.spin.Stop()
+	r.md.Flush()
+	color := amber
+	switch {
+	case strings.HasPrefix(msg, "✓"):
+		color = green
+	case strings.HasPrefix(msg, "✗"):
+		color = red
+	}
+	if strings.HasPrefix(msg, "step ") {
+		r.printf("\n")
+	}
+	r.printf("  %s%s⟳ LOOP %s %s%s%s\n", bold, onAmber, reset, color, msg, reset)
+	if strings.HasPrefix(msg, "plan ready") || strings.HasPrefix(msg, "split ") || st.Status != agent.LoopRunning {
+		r.printChecklist(st)
+	}
+	r.md = newMDStream()
+	r.spin = startSpinner("working")
+}
+
+func (r *REPL) printChecklist(st *agent.LoopState) {
+	for _, l := range strings.Split(strings.TrimRight(st.Checklist(), "\n"), "\n") {
+		c := slate
+		switch {
+		case strings.HasPrefix(l, "✓"):
+			c = green
+		case strings.HasPrefix(l, "▶"):
+			c = amber
+		case strings.HasPrefix(l, "✗"):
+			c = red
+		}
+		r.printf("    %s%s%s\n", c, oneLine(l, termWidth()-6), reset)
+	}
+}
+
 func (r *REPL) Approve(ctx context.Context, call llm.ToolCall, gate agent.Gate) agent.Decision {
 	summary := gate.Summary
 	r.spin.Stop()
@@ -421,10 +606,13 @@ func (r *REPL) Approve(ctx context.Context, call llm.ToolCall, gate agent.Gate) 
 		return agent.Deny
 	}
 	defer term.Restore(r.fd, old)
+	r.gating = true
+	defer func() { r.gating = false }()
 	opts := fmt.Sprintf("  %s[y]%s run  ", lime, reset)
 	if gate.Scope != "" {
 		opts += fmt.Sprintf("%s[a]%s always %s%s%s here  %s[g]%s everywhere  ", lime, reset, bold, gate.Scope, reset, lime, reset)
 	}
+	opts += fmt.Sprintf("%s[ctrl+y]%s yolo  ", amber, reset)
 	r.t.SetPrompt(opts + fmt.Sprintf("%s[n]%s block %s▸%s ", red, reset, amber, reset))
 	for {
 		ans, err := r.t.ReadLine()
@@ -603,9 +791,26 @@ func (r *REPL) command(line string) (quit bool) {
 			r.printf("  %s%-11s%s%s %s%s%s\n", cyan, t.Spec.Name, reset, flag, dim, t.Spec.Description, reset)
 		}
 	case "/yolo":
-		on := !r.app.Config.Get().AutoApprove
-		r.update(func(c *config.Config) error { c.AutoApprove = on; return nil })
-		r.printf("%sauto-approve %s%s\n", yellow, map[bool]string{true: "ON — tools run without asking", false: "off"}[on], reset)
+		r.printf("%s", r.yoloLine(r.toggleYolo()))
+	case "/mode", "/modes":
+		if len(args) == 0 {
+			r.pickMode()
+			return
+		}
+		m, ok := agent.ParseMode(args[0])
+		if !ok {
+			r.printf("%sunknown mode %q — build, plan, loop or ask%s\n", yellow, args[0], reset)
+			return
+		}
+		r.modeCommand(m, strings.TrimSpace(strings.TrimPrefix(rest, args[0])))
+	case "/plan":
+		r.modeCommand(agent.ModePlan, rest)
+	case "/build":
+		r.modeCommand(agent.ModeBuild, rest)
+	case "/ask":
+		r.modeCommand(agent.ModeAsk, rest)
+	case "/loop":
+		r.loopCommand(args, rest)
 	case "/dashboard":
 		url, err := dashboard.Ensure(r.app)
 		if err != nil {
@@ -617,8 +822,18 @@ func (r *REPL) command(line string) (quit bool) {
 	case "/config":
 		cfg := r.app.Config.Get()
 		name, pc := cfg.Active()
-		r.printf("  file:       %s\n  provider:   %s (%s @ %s)\n  model:      %s\n  auto-approve: %v\n  voice:      %v (%s)\n  skills dir: %s\n  memory:     %s · %s\n  permissions: %s\n",
-			r.app.Config.Path(), name, pc.Type, pc.BaseURL, pc.Model, cfg.AutoApprove, cfg.Audio.Enabled, cfg.Audio.Engine, r.app.Skills.InstallDir(),
+		verify := cfg.Loop.Verify
+		if verify == "" {
+			cwd, _ := os.Getwd()
+			verify = "auto (nothing detected)"
+			if d := agent.DetectVerify(cwd); d != "" {
+				verify = "auto → " + d
+			}
+		}
+		r.printf("  file:       %s\n  provider:   %s (%s @ %s)\n  model:      %s\n  mode:       %s\n  yolo:       %v (saved auto_approve: %v)\n  loop:       %d iterations · %d attempts/step · %d tool rounds/step · verify: %s\n  voice:      %v (%s)\n  skills dir: %s\n  memory:     %s · %s\n  permissions: %s\n",
+			r.app.Config.Path(), name, pc.Type, pc.BaseURL, pc.Model, r.mode(), r.yolo(), cfg.AutoApprove,
+			cfg.Loop.MaxIterations, cfg.Loop.StepAttempts, cfg.Loop.StepRounds, verify,
+			cfg.Audio.Enabled, cfg.Audio.Engine, r.app.Skills.InstallDir(),
 			r.app.Memory.Dir("user"), r.app.Memory.Dir("project"), r.app.Perms.Path())
 	case "/usage":
 		u := r.sess.Usage
@@ -637,6 +852,83 @@ func (r *REPL) command(line string) (quit bool) {
 		r.printf("%sunknown command %s — /help lists commands%s\n", yellow, cmd, reset)
 	}
 	return false
+}
+
+// modeCommand switches mode and, given a request, sends it in that mode.
+func (r *REPL) modeCommand(m agent.Mode, request string) {
+	if r.mode() != m {
+		r.setMode(m)
+		r.printf("%s", r.modeLine())
+	}
+	if request != "" {
+		r.send(request)
+	}
+}
+
+func (r *REPL) pickMode() {
+	var items []menuItem
+	sel := 0
+	for i, m := range agent.Modes {
+		items = append(items, menuItem{Label: string(m), Detail: m.Describe(), Mark: m == r.mode(), Value: string(m)})
+		if m == r.mode() {
+			sel = i
+		}
+	}
+	if it := r.choose("mode", items, sel); it != nil {
+		m, _ := agent.ParseMode(it.Value)
+		r.modeCommand(m, "")
+	}
+}
+
+func (r *REPL) loopCommand(args []string, rest string) {
+	cwd, _ := os.Getwd()
+	sub := ""
+	if len(args) > 0 {
+		sub = strings.ToLower(args[0])
+	}
+	switch sub {
+	case "":
+		if r.sess.Plan != "" {
+			steps := agent.ParseSteps(r.sess.Plan)
+			r.printf("  %srunning the plan from plan mode (%d steps)%s\n", slate, len(steps), reset)
+			r.loop(r.sess.PlanGoal, agent.LoopOptions{Steps: steps})
+			r.sess.Plan, r.sess.PlanGoal = "", ""
+			return
+		}
+		r.modeCommand(agent.ModeLoop, "")
+		r.printf("  %stype the objective, e.g. \"add a --json flag to the list command, with tests\"%s\n", slate, reset)
+	case "resume", "continue":
+		r.loop("", agent.LoopOptions{Resume: true, Notes: strings.TrimSpace(strings.TrimPrefix(rest, args[0]))})
+	case "status":
+		st, err := agent.LoadLoop(cwd)
+		if err != nil {
+			r.printf("%s%v%s\n", dim, err, reset)
+			return
+		}
+		done, total := st.Progress()
+		r.printf("  %s%s⟳ LOOP %s %s%s%s · %d/%d steps · %d iterations · updated %s\n  %sobjective:%s %s\n",
+			bold, onAmber, reset, amber, st.Status, reset, done, total, st.Iteration, st.Updated.Format("Jan 2 15:04"), slate, reset, st.Objective)
+		if st.Outcome != "" {
+			r.printf("  %s%s%s\n", slate, st.Outcome, reset)
+		}
+		r.printChecklist(st)
+	case "verify":
+		cmd := strings.TrimSpace(strings.TrimPrefix(rest, args[0]))
+		if cmd == "" {
+			r.printf("usage: /loop verify <command>  ·  /loop verify none  ·  /loop verify auto\n")
+			return
+		}
+		if cmd == "auto" {
+			cmd = ""
+		}
+		r.update(func(c *config.Config) error { c.Loop.Verify = cmd; return nil })
+		if cmd == "" {
+			cmd = "auto-detect (" + agent.DetectVerify(cwd) + ")"
+		}
+		r.printf("%sloop verification → %s%s\n", dim, cmd, reset)
+	default:
+		r.loop(rest, agent.LoopOptions{})
+	}
 }
 
 func (r *REPL) skillCommand(ctx context.Context, args []string) {

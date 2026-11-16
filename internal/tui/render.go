@@ -16,24 +16,40 @@ import (
 // magenta for skills, amber for permission gates. 256-colour codes so it
 // works in every modern terminal; NO_COLOR disables styling entirely.
 var (
-	reset   = "\x1b[0m"
-	bold    = "\x1b[1m"
-	dim     = "\x1b[2m"
-	italic  = "\x1b[3m"
-	red     = "\x1b[38;5;203m"
-	green   = "\x1b[38;5;154m"
-	lime    = "\x1b[38;5;154m"
-	cyan    = "\x1b[38;5;45m"
-	magenta = "\x1b[38;5;207m"
-	yellow  = "\x1b[38;5;214m"
-	amber   = "\x1b[38;5;214m"
-	slate   = "\x1b[38;5;245m"
-	onLime  = "\x1b[48;5;154m\x1b[38;5;16m"
+	reset     = "\x1b[0m"
+	bold      = "\x1b[1m"
+	dim       = "\x1b[2m"
+	italic    = "\x1b[3m"
+	red       = "\x1b[38;5;203m"
+	green     = "\x1b[38;5;154m"
+	lime      = "\x1b[38;5;154m"
+	cyan      = "\x1b[38;5;45m"
+	magenta   = "\x1b[38;5;207m"
+	yellow    = "\x1b[38;5;214m"
+	amber     = "\x1b[38;5;214m"
+	slate     = "\x1b[38;5;245m"
+	onLime    = "\x1b[48;5;154m\x1b[38;5;16m"
+	onCyan    = "\x1b[48;5;45m\x1b[38;5;16m"
+	onMagenta = "\x1b[48;5;207m\x1b[38;5;16m"
+	onAmber   = "\x1b[48;5;214m\x1b[38;5;16m"
 )
+
+// onColor returns the badge (background) form of a foreground colour.
+func onColor(fg string) string {
+	switch fg {
+	case cyan:
+		return onCyan
+	case magenta:
+		return onMagenta
+	case amber:
+		return onAmber
+	}
+	return onLime
+}
 
 func init() {
 	if os.Getenv("NO_COLOR") != "" {
-		for _, p := range []*string{&reset, &bold, &dim, &italic, &red, &green, &lime, &cyan, &magenta, &yellow, &amber, &slate, &onLime} {
+		for _, p := range []*string{&reset, &bold, &dim, &italic, &red, &green, &lime, &cyan, &magenta, &yellow, &amber, &slate, &onLime, &onCyan, &onMagenta, &onAmber} {
 			*p = ""
 		}
 	}

@@ -18,6 +18,26 @@ type ProviderConfig struct {
 	BaseURL string `json:"base_url"`
 	APIKey  string `json:"api_key,omitempty"`
 	Model   string `json:"model"`
+	// NumCtx is the context window requested from Ollama (num_ctx). Ollama's
+	// own default is small enough that system prompt + tools + a file or
+	// two get silently truncated, which wrecks small models.
+	// 0 uses DefaultNumCtx; a negative value leaves it to Ollama.
+	NumCtx int `json:"num_ctx,omitempty"`
+}
+
+// LoopConfig tunes the loop harness (/loop): plan → execute → verify →
+// evaluate, one small step at a time.
+type LoopConfig struct {
+	// MaxIterations caps step attempts across the whole run.
+	MaxIterations int `json:"max_iterations"`
+	// StepAttempts is how often one step is retried before it is split into
+	// smaller steps (and, if that fails too, handed back to the user).
+	StepAttempts int `json:"step_attempts"`
+	// StepRounds caps tool rounds inside one step.
+	StepRounds int `json:"step_rounds"`
+	// Verify is the command that proves the work (e.g. "go test ./...").
+	// Empty auto-detects from the project; "none" disables verification.
+	Verify string `json:"verify,omitempty"`
 }
 
 // VoiceSpec says who reads replies aloud.
@@ -58,7 +78,11 @@ type Config struct {
 	DashboardPort  int                        `json:"dashboard_port"`
 	Temperature    *float64                   `json:"temperature,omitempty"`
 	Audio          AudioConfig                `json:"audio"`
+	Loop           LoopConfig                 `json:"loop"`
 }
+
+// DefaultNumCtx is the Ollama context window used when num_ctx is unset.
+const DefaultNumCtx = 16384
 
 // Store guards a Config and persists it to disk.
 type Store struct {
@@ -133,6 +157,15 @@ func (c *Config) normalize() {
 	}
 	if c.MaxToolRounds <= 0 {
 		c.MaxToolRounds = 25
+	}
+	if c.Loop.MaxIterations <= 0 {
+		c.Loop.MaxIterations = 30
+	}
+	if c.Loop.StepAttempts <= 0 {
+		c.Loop.StepAttempts = 3
+	}
+	if c.Loop.StepRounds <= 0 {
+		c.Loop.StepRounds = 15
 	}
 	if c.DashboardPort == 0 {
 		c.DashboardPort = 7777
