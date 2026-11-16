@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.3](https://github.com/kxngHADES/asg-harness/compare/v0.1.2...v0.1.3) (2026-11-16)
+
+
+### Features
+
+* working modes, YOLO shortcut and loop harness for small models ([08170ea](https://github.com/kxngHADES/asg-harness/commit/08170eaef881db4ad1d049a56ca38ad32aed7561))
+* working modes, YOLO shortcut and loop harness for small models ([08170ea](https://github.com/kxngHADES/asg-harness/commit/08170eaef881db4ad1d049a56ca38ad32aed7561))
+* working modes, YOLO shortcut and loop harness for small models ([d408ffd](https://github.com/kxngHADES/asg-harness/commit/d408ffd25de8b50b82383d0da765913794f0c6a3))
+
 ## [0.1.2](https://github.com/kxngHADES/asg-harness/compare/v0.1.1...v0.1.2) (2026-11-08)
 
 
