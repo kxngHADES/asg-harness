@@ -298,7 +298,7 @@ type turnOpts struct {
 	mode        Mode
 	extra       string // appended to the system prompt
 	system      string // replaces the system prompt entirely when set
-	maxRounds   int
+	maxRounds   int    // 0 means no limit
 	noTools     bool
 	temperature *float64
 	// onTool, when set, is told about every finished tool call.
@@ -339,7 +339,7 @@ func (s *Session) send(ctx context.Context, user llm.Message, ev Events, o turnO
 	}
 	seen := map[string]int{}
 
-	for round := 0; round < max(o.maxRounds, 1); round++ {
+	for round := 0; o.maxRounds <= 0 || round < o.maxRounds; round++ {
 		req := llm.Request{Model: model, System: system, Messages: s.History, Temperature: temp, NumCtx: numCtx(pc)}
 		if !s.noTools && !o.noTools {
 			req.Tools = specs

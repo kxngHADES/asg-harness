@@ -332,7 +332,7 @@ Manage providers in the dashboard, or edit `~/.asg/config.json` (`$ASG_HOME` ove
 }
 ```
 
-If a model rejects tool definitions, ASG switches to chat-only mode for it automatically. `num_ctx` is the Ollama context window: unset means 16384, a negative value leaves Ollama's default. Lower it if a model no longer fits in VRAM; raise it for long files.
+There is no limit on how many tools the model uses in one turn; it keeps going until it's done or you press Ctrl+C. Set `"max_tool_rounds": N` only if you want a cap. If a model rejects tool definitions, ASG switches to chat-only mode for it automatically. `num_ctx` is the Ollama context window: unset means 16384, a negative value leaves Ollama's default. Lower it if a model no longer fits in VRAM; raise it for long files.
 
 ---
 

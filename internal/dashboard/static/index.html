@@ -281,7 +281,7 @@ dialog pre { white-space: pre-wrap; background: var(--code); border: 2px solid v
         <h3 style="margin-top:0">Behaviour</h3>
         <div class="field"><label>Extra system prompt</label><textarea id="sysPrompt" rows="4" placeholder="Anything you want the model to always know or do"></textarea></div>
         <div class="row" style="margin-top:12px">
-          <div class="field"><label>Max tool rounds per turn</label><input type="number" id="maxRounds" min="1"></div>
+          <div class="field"><label>Max tool rounds per turn (blank = no limit)</label><input type="number" id="maxRounds" min="0" placeholder="no limit"></div>
           <div class="field"><label>Temperature (blank = model default)</label><input type="number" id="temperature" step="0.1" min="0" max="2"></div>
           <div class="field"><label>Dashboard port</label><input type="number" id="port"></div>
         </div>
@@ -531,7 +531,7 @@ $("saveProviders").onclick = () => saveConfig(CFG).catch(e => toast(e.message, t
 function renderSettings() {
   $("cfgPath").textContent = STATE.config_path;
   $("sysPrompt").value = CFG.system_prompt || "";
-  $("maxRounds").value = CFG.max_tool_rounds;
+  $("maxRounds").value = CFG.max_tool_rounds || "";
   $("temperature").value = CFG.temperature ?? "";
   $("port").value = CFG.dashboard_port;
   $("autoApprove").checked = !!CFG.auto_approve;
@@ -543,7 +543,7 @@ function renderSettings() {
 }
 function readSettings() {
   CFG.system_prompt = $("sysPrompt").value;
-  CFG.max_tool_rounds = parseInt($("maxRounds").value) || 25;
+  CFG.max_tool_rounds = parseInt($("maxRounds").value) || 0;
   const t = $("temperature").value; CFG.temperature = t === "" ? null : parseFloat(t);
   CFG.dashboard_port = parseInt($("port").value) || 7777;
   CFG.auto_approve = $("autoApprove").checked;
