@@ -79,8 +79,8 @@ func (m Mode) allows(t *tools.Tool) bool {
 		return true
 	}
 	switch t.Spec.Name {
-	case "web_fetch", "use_skill", "memory_save", "memory_delete":
-		return true // reach out or touch ~/.asg only, never the project
+	case "web_fetch", "use_skill", "memory_save", "memory_delete", "ask_user", "screenshot":
+		return true // reach out, look, or touch ~/.asg only — never change the project
 	}
 	return !t.NeedsApproval
 }

@@ -69,6 +69,15 @@ type AudioConfig struct {
 	OpenAIProvider string `json:"openai_provider,omitempty"`
 }
 
+// ReviewConfig sets how often the model goes back over its own answer.
+type ReviewConfig struct {
+	// Passes is the minimum number of self-review passes after every answer
+	// (default 4). A negative value turns self-review off.
+	Passes int `json:"passes"`
+	// MaxPasses caps the passes when the last one still found problems.
+	MaxPasses int `json:"max_passes"`
+}
+
 type Config struct {
 	ActiveProvider string                     `json:"active_provider"`
 	Providers      map[string]*ProviderConfig `json:"providers"`
@@ -79,6 +88,10 @@ type Config struct {
 	Temperature    *float64                   `json:"temperature,omitempty"`
 	Audio          AudioConfig                `json:"audio"`
 	Loop           LoopConfig                 `json:"loop"`
+	Review         ReviewConfig               `json:"review"`
+	// Domain and Flavor are the default work track (e.g. software / work).
+	Domain string `json:"domain,omitempty"`
+	Flavor string `json:"flavor,omitempty"`
 }
 
 // DefaultNumCtx is the Ollama context window used when num_ctx is unset.
@@ -166,6 +179,12 @@ func (c *Config) normalize() {
 	}
 	if c.Loop.StepRounds <= 0 {
 		c.Loop.StepRounds = 15
+	}
+	if c.Review.Passes == 0 {
+		c.Review.Passes = 4
+	}
+	if c.Review.Passes > 0 && c.Review.MaxPasses < c.Review.Passes {
+		c.Review.MaxPasses = c.Review.Passes + 2
 	}
 	if c.DashboardPort == 0 {
 		c.DashboardPort = 7777

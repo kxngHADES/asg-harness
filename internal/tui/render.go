@@ -32,6 +32,7 @@ var (
 	onCyan    = "\x1b[48;5;45m\x1b[38;5;16m"
 	onMagenta = "\x1b[48;5;207m\x1b[38;5;16m"
 	onAmber   = "\x1b[48;5;214m\x1b[38;5;16m"
+	onRed     = "\x1b[48;5;203m\x1b[38;5;16m"
 )
 
 // onColor returns the badge (background) form of a foreground colour.
@@ -43,13 +44,15 @@ func onColor(fg string) string {
 		return onMagenta
 	case amber:
 		return onAmber
+	case red:
+		return onRed
 	}
 	return onLime
 }
 
 func init() {
 	if os.Getenv("NO_COLOR") != "" {
-		for _, p := range []*string{&reset, &bold, &dim, &italic, &red, &green, &lime, &cyan, &magenta, &yellow, &amber, &slate, &onLime, &onCyan, &onMagenta, &onAmber} {
+		for _, p := range []*string{&reset, &bold, &dim, &italic, &red, &green, &lime, &cyan, &magenta, &yellow, &amber, &slate, &onLime, &onCyan, &onMagenta, &onAmber, &onRed} {
 			*p = ""
 		}
 	}

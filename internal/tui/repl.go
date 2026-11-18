@@ -21,6 +21,7 @@ import (
 	"github.com/kxngHADES/asg-harness/internal/dashboard"
 	"github.com/kxngHADES/asg-harness/internal/llm"
 	"github.com/kxngHADES/asg-harness/internal/media"
+	itools "github.com/kxngHADES/asg-harness/internal/tools"
 )
 
 const keyCtrlV = 22
@@ -40,6 +41,9 @@ type REPL struct {
 	menuOn  bool // '/' on an empty main prompt opens the command menu
 	gating  bool // a permission gate is waiting for an answer
 	pending []attachment
+	// stripShown is set while the status strip is the line right above
+	// the prompt, so the next mode / track change can redraw it in place.
+	stripShown bool
 
 	mu        sync.Mutex
 	cancel    context.CancelFunc
@@ -74,10 +78,18 @@ var commands = []command{
 	{"/model", "[name]", "pick a model from a menu, or set one by name"},
 	{"/provider", "[name]", "pick a provider (ollama, anthropic, openai, ...) and then its model"},
 	{"/mode", "[build|plan|loop|ask]", "pick how ASG works (or press shift+tab to cycle)"},
+	{"/domain", "[software|docs|cyber|devops|pm] [flavor]", "pick what kind of work ASG does and its loop (or press ctrl+t to cycle)"},
+	{"/software", "[work|project|hobby] [request]", "software domain: work = only code this build needs, caller first, test → doc → verify → security"},
+	{"/docs", "[update|write] [request]", "docs domain: screenshot the rendered docs, fix, re-screenshot"},
+	{"/cyber", "[red|blue] [request]", "security domain: authorized red or blue team work, ends with a full report"},
+	{"/devops", "[review|pipeline] [request]", "DevOps domain: review and fix CI/CD pipelines"},
+	{"/pm", "[plan|sprint|status] [request]", "project manager domain: plans, sprints, risks, status"},
 	{"/plan", "[request]", "plan mode: investigate read-only and write a step-by-step plan"},
 	{"/build", "[request]", "build mode: make changes (the default)"},
 	{"/ask", "[question]", "ask mode: read-only questions about your code"},
 	{"/loop", "[objective] | resume [answer] | status | verify <cmd>", "run an objective plan → do → verify → review until done"},
+	{"/review", "[passes|off]", "how many times ASG re-checks every answer (default 4)"},
+	{"/work", "", "show the work folder: plan, checklist, walkthrough, activity log"},
 	{"/dashboard", "", "open the browser dashboard (chat, config, skills)"},
 	{"/init", "", "write an ASG.md describing this project for future sessions"},
 	{"/memory", "[note]", "browse saved memories, or ask ASG to remember something"},
@@ -89,7 +101,8 @@ var commands = []command{
 	{"/speak", "", "read the last reply aloud"},
 	{"/skills", "", "list installed skills"},
 	{"/skill", "add <src> | rm <name> | show <name>", "import a skill (path, URL, github:owner/repo[/path]) or remove one"},
-	{"/tools", "", "list tools the model can call"},
+	{"/tools", "", "list tools the model can call (reloads script tools)"},
+	{"/tool", "new <name>", "create a script tool in ~/.asg/tools (see tools/README.md)"},
 	{"/yolo", "", "toggle YOLO: run tools without asking (or press ctrl+y)"},
 	{"/config", "", "show config file location and active settings"},
 	{"/usage", "", "show token usage for this session"},
@@ -97,7 +110,10 @@ var commands = []command{
 	{"/exit", "", "quit"},
 }
 
-func (r *REPL) printf(format string, a ...any) { fmt.Printf(format, a...) }
+func (r *REPL) printf(format string, a ...any) {
+	fmt.Printf(format, a...)
+	r.stripShown = false // the strip is no longer right above the prompt
+}
 
 func (r *REPL) banner() {
 	cfg := r.app.Config.Get()
@@ -112,15 +128,28 @@ func (r *REPL) banner() {
 		project = slate + " · no ASG.md, try " + lime + "/init" + reset
 	}
 	fmt.Println()
+	t := r.track()
 	petBanner(os.Stdout, []string{
 		onLime + " ASG " + reset + " " + bold + "agent shell" + reset,
-		slate + name + reset + "/" + lime + model + reset,
+		slate + name + reset + "/" + lime + model + reset + "  " + domainColor(t.Domain) + t.String() + reset,
 		slate + oneLine(cwd, 40) + reset + project,
 		"type " + lime + "/" + reset + " for commands",
 	})
 	r.printf("  %s%s%s\n", slate, strings.Repeat("━", min(termWidth()-4, 60)), reset)
-	r.printf("  %s/%s menu  %s·%s  %sshift+tab%s mode  %s·%s  %sctrl+y%s yolo  %s·%s  %sctrl+v%s paste image  %s·%s  %sctrl+c%s stop\n\n",
-		lime, reset, slate, reset, lime, reset, slate, reset, lime, reset, slate, reset, lime, reset, slate, reset, lime, reset)
+	keys := [][2]string{{"/", "menu"}, {"shift+tab", "mode"}, {"ctrl+t", "domain"}, {"ctrl+y", "yolo"}, {"ctrl+v", "image"}, {"ctrl+c", "stop"}}
+	var parts []string
+	for _, k := range keys {
+		parts = append(parts, lime+k[0]+reset+" "+k[1])
+	}
+	r.printf("  %s\n\n", strings.Join(parts, slate+"  ·  "+reset))
+	r.printStrip()
+}
+
+// printStrip prints the status strip outside the line editor; the next
+// Shift+Tab / Ctrl+T at the prompt redraws it in place.
+func (r *REPL) printStrip() {
+	r.printf("%s\n", r.statusStrip())
+	r.stripShown = true
 }
 
 const keyCtrlY = 25
@@ -168,15 +197,6 @@ func (r *REPL) setMode(m agent.Mode) {
 
 // SetMode picks the mode the session starts in (the -mode flag).
 func (r *REPL) SetMode(m agent.Mode) { r.setMode(m) }
-
-func (r *REPL) modeLine() string {
-	m := r.mode()
-	extra := ""
-	if m == agent.ModeLoop && r.sess.Plan != "" {
-		extra = fmt.Sprintf(" %s· /loop runs the plan you just made%s", slate, reset)
-	}
-	return fmt.Sprintf("  %s%s %s mode %s %s%s%s%s\n", bold, onColor(modeColor(m)), strings.ToUpper(string(m)), reset, slate, m.Describe(), reset, extra)
-}
 
 func (r *REPL) mode() agent.Mode {
 	if r.sess == nil || r.sess.Mode == "" {
@@ -256,12 +276,13 @@ func (r *REPL) prompt() string {
 	if len(model) > 22 {
 		model = model[:21] + "…"
 	}
-	p := slate + model + " " + reset + lime + bold + "▸ " + reset
-	if m := r.mode(); m != agent.ModeBuild {
-		p = modeColor(m) + bold + string(m) + reset + " " + p
-	}
+	// [⚡] BUILD software/work model ▸ — the mode badge has a fixed width
+	// and is always shown, so the prompt keeps its shape across changes.
+	t := r.track()
+	p := modeBadge(r.mode()) + " " + domainColor(t.Domain) + t.String() + reset + " " +
+		slate + model + reset + " " + lime + bold + "▸ " + reset
 	if r.yolo() {
-		p = amber + bold + "⚡yolo" + reset + " " + p
+		p = onAmber + bold + " ⚡YOLO " + reset + " " + p
 	}
 	if n := len(r.pending); n > 0 {
 		p = fmt.Sprintf("%s▣ %d img%s %s", magenta, n, reset, p)
@@ -312,13 +333,19 @@ func (r *REPL) onKey(line string, pos int, key rune) (string, int, bool) {
 			return line, pos, true
 		}
 		r.setMode(r.mode().Next())
-		r.t.SetPrompt(r.prompt())
-		fmt.Fprint(r.t, r.modeLine()) // writing redraws the prompt and line
+		r.showStrip()
+		return line, pos, true
+	case keyCtrlT:
+		if r.gating {
+			return line, pos, true
+		}
+		r.cycleDomain()
+		r.showStrip()
 		return line, pos, true
 	case keyCtrlY:
 		on := r.toggleYolo()
 		if r.gating {
-			fmt.Fprint(r.t, r.yoloLine(on)) // keep the gate's own prompt
+			r.printAbove(r.yoloLine(on)) // keep the gate's own prompt
 			if !on {
 				return line, pos, true
 			}
@@ -327,7 +354,7 @@ func (r *REPL) onKey(line string, pos int, key rune) (string, int, bool) {
 			return "y", 1, true
 		}
 		r.t.SetPrompt(r.prompt())
-		fmt.Fprint(r.t, r.yoloLine(on))
+		r.printAbove(r.yoloLine(on))
 		return line, pos, true
 	case '/':
 		if r.menuOn && line == "" {
@@ -336,7 +363,7 @@ func (r *REPL) onKey(line string, pos int, key rune) (string, int, bool) {
 	case keyCtrlV:
 		img, err := media.ClipboardImage()
 		if err != nil {
-			fmt.Fprintf(r.t, "%s%s%s\n", yellow, err, reset)
+			r.printAbove(yellow + err.Error() + reset)
 			return "", 0, false
 		}
 		r.pending = append(r.pending, attachment{name: "clipboard", img: img})
@@ -359,7 +386,7 @@ func (r *REPL) onKey(line string, pos int, key rune) (string, int, bool) {
 		if len(matches) == 1 {
 			return matches[0] + " ", len(matches[0]) + 1, true
 		}
-		fmt.Fprintf(r.t, "%s%s%s\n", dim, strings.Join(matches, "  "), reset)
+		r.printAbove(dim + strings.Join(matches, "  ") + reset)
 		p := commonPrefix(matches)
 		return p, len(p), true
 	}
@@ -447,7 +474,23 @@ func (r *REPL) loop(objective string, opt agent.LoopOptions) {
 		return
 	}
 	u := r.sess.Usage
-	r.printf("  %s── loop %.0fs · %d↓ tokens generated ──%s\n\n", slate, time.Since(start).Seconds(), u.OutputTokens, reset)
+	r.printf("  %s── loop %.0fs · %d↓ tokens generated ──%s\n", slate, time.Since(start).Seconds(), u.OutputTokens, reset)
+	r.workHint()
+	r.printf("\n")
+}
+
+// workHint points at the work folder after a turn that has one.
+func (r *REPL) workHint() {
+	if w := r.sess.Work; w.Exists() && r.mode() != agent.ModePlan && r.mode() != agent.ModeAsk {
+		r.printf("  %swork folder: %s%s/%s %s(plan · checklist · walkthrough · activity — /work)%s\n", slate, lime, w.Rel, reset, slate, reset)
+	}
+}
+
+func reviewState(c config.ReviewConfig) string {
+	if c.Passes < 0 {
+		return "off"
+	}
+	return fmt.Sprintf("%d passes (up to %d)", c.Passes, c.MaxPasses)
 }
 
 // withCancel runs fn with a context that Ctrl+C cancels.
@@ -495,11 +538,13 @@ func (r *REPL) run(msg llm.Message) {
 	}
 	u := r.sess.Usage
 	r.printf("  %s── %.1fs · %d↑ %d↓ tokens ──%s\n", slate, time.Since(start).Seconds(), u.InputTokens, u.OutputTokens, reset)
+	r.workHint()
 	if r.mode() == agent.ModePlan && r.sess.Plan != "" && reply == r.sess.Plan {
 		r.printf("  %splan saved · %s/loop%s%s runs it step by step with checks · %sshift+tab%s%s to build mode works through it with you%s\n",
 			slate, lime, reset, slate, lime, reset, slate, reset)
 	}
 	r.printf("\n")
+	r.printStrip()
 	r.lastReply = reply
 	if r.app.Config.Get().Audio.Enabled {
 		r.speak(reply)
@@ -783,13 +828,53 @@ func (r *REPL) command(line string) (quit bool) {
 	case "/skill":
 		r.skillCommand(ctx, args)
 	case "/tools":
+		errs := r.app.ReloadTools()
 		for _, t := range r.app.Tools.All() {
-			flag := ""
+			flag := "      "
 			if t.NeedsApproval {
-				flag = yellow + " (asks)" + reset
+				flag = yellow + "asks  " + reset
 			}
-			r.printf("  %s%-11s%s%s %s%s%s\n", cyan, t.Spec.Name, reset, flag, dim, t.Spec.Description, reset)
+			src := t.Source
+			if src != "builtin" && src != "bundled" {
+				src = "script"
+			}
+			r.printf("  %s%-16s%s %s%-8s%s %s%s%s%s\n", cyan, t.Spec.Name, reset, slate, src, reset, flag, dim, oneLine(t.Spec.Description, termWidth()-36), reset)
 		}
+		r.printf("  %s%-16s%s %s%-8s%s %s%s%s\n", cyan, "ask_user", reset, slate, "builtin", reset, "      "+dim, "pause and ask you a question whenever information is missing", reset)
+		for _, err := range errs {
+			r.printf("  %s! %v%s\n", amber, err, reset)
+		}
+		r.printf("  %sscript tools: %s%s\n", slate, strings.Join(agent.ToolDirs(), " · "), reset)
+	case "/tool":
+		if len(args) < 2 || args[0] != "new" {
+			r.printf("usage: /tool new <name>  — creates a script tool in %s\n", agent.ToolDirs()[1])
+			return
+		}
+		dir, err := itools.ScaffoldScriptTool(agent.ToolDirs()[1], args[1])
+		if err != nil {
+			r.printf("%s%v%s\n", red, err, reset)
+			return
+		}
+		r.app.ReloadTools()
+		r.printf("  %s✓ created %s%s — edit tool.json and run.py, then /tools to reload\n", green, dir, reset)
+	case "/domain", "/domains":
+		if len(args) == 0 {
+			r.pickDomain()
+			return
+		}
+		d, ok := agent.ParseDomain(args[0])
+		if !ok {
+			r.printf("%sunknown domain %q — software, docs, cyber, devops or pm%s\n", yellow, args[0], reset)
+			return
+		}
+		r.domainCommand(d, args[1:], strings.TrimSpace(strings.TrimPrefix(rest, args[0])))
+	case "/software", "/docs", "/cyber", "/devops", "/pm":
+		d, _ := agent.ParseDomain(strings.TrimPrefix(cmd, "/"))
+		r.domainCommand(d, args, rest)
+	case "/review":
+		r.reviewCommand(args)
+	case "/work":
+		r.workCommand()
 	case "/yolo":
 		r.printf("%s", r.yoloLine(r.toggleYolo()))
 	case "/mode", "/modes":
@@ -830,8 +915,8 @@ func (r *REPL) command(line string) (quit bool) {
 				verify = "auto → " + d
 			}
 		}
-		r.printf("  file:       %s\n  provider:   %s (%s @ %s)\n  model:      %s\n  mode:       %s\n  yolo:       %v (saved auto_approve: %v)\n  loop:       %d iterations · %d attempts/step · %d tool rounds/step · verify: %s\n  voice:      %v (%s)\n  skills dir: %s\n  memory:     %s · %s\n  permissions: %s\n",
-			r.app.Config.Path(), name, pc.Type, pc.BaseURL, pc.Model, r.mode(), r.yolo(), cfg.AutoApprove,
+		r.printf("  file:       %s\n  provider:   %s (%s @ %s)\n  model:      %s\n  mode:       %s\n  track:      %s\n  review:     %s\n  yolo:       %v (saved auto_approve: %v)\n  loop:       %d iterations · %d attempts/step · %d tool rounds/step · verify: %s\n  voice:      %v (%s)\n  skills dir: %s\n  memory:     %s · %s\n  permissions: %s\n",
+			r.app.Config.Path(), name, pc.Type, pc.BaseURL, pc.Model, r.mode(), r.track(), reviewState(cfg.Review), r.yolo(), cfg.AutoApprove,
 			cfg.Loop.MaxIterations, cfg.Loop.StepAttempts, cfg.Loop.StepRounds, verify,
 			cfg.Audio.Enabled, cfg.Audio.Engine, r.app.Skills.InstallDir(),
 			r.app.Memory.Dir("user"), r.app.Memory.Dir("project"), r.app.Perms.Path())
@@ -858,11 +943,74 @@ func (r *REPL) command(line string) (quit bool) {
 func (r *REPL) modeCommand(m agent.Mode, request string) {
 	if r.mode() != m {
 		r.setMode(m)
-		r.printf("%s", r.modeLine())
+		if m == agent.ModeLoop && r.sess.Plan != "" {
+			r.printf("  %s/loop runs the plan you just made%s\n", slate, reset)
+		}
+		r.printStrip()
 	}
 	if request != "" {
 		r.send(request)
 	}
+}
+
+// domainCommand handles /domain and the /software, /docs, … shortcuts:
+// [flavor] [request]. A first word that names a flavor picks it; the rest
+// is sent as a request.
+func (r *REPL) domainCommand(d agent.Domain, args []string, rest string) {
+	t := agent.Track{Domain: d, Flavor: r.track().Flavor}
+	if d != r.track().Domain {
+		t.Flavor = agent.WorkflowFor(d).Flavors[0].Name
+	}
+	if len(args) > 0 {
+		if ft, ok := t.WithFlavor(args[0]); ok {
+			t = ft
+			rest = strings.TrimSpace(strings.TrimPrefix(rest, args[0]))
+		}
+	}
+	if t != r.track() {
+		r.setTrack(t)
+	}
+	r.printf("%s", r.trackLine())
+	r.printStrip()
+	if rest != "" {
+		r.send(rest)
+	}
+}
+
+// pickDomain is a two-step menu: domain, then flavor.
+func (r *REPL) pickDomain() {
+	cur := r.track()
+	var items []menuItem
+	sel := 0
+	for i, w := range agent.Workflows {
+		items = append(items, menuItem{Label: w.Label, Detail: w.Describe, Mark: w.Domain == cur.Domain, Value: string(w.Domain)})
+		if w.Domain == cur.Domain {
+			sel = i
+		}
+	}
+	it := r.choose("domain", items, sel)
+	if it == nil {
+		return
+	}
+	d, _ := agent.ParseDomain(it.Value)
+	w := agent.WorkflowFor(d)
+	flavor := w.Flavors[0].Name
+	if len(w.Flavors) > 1 {
+		items, sel = nil, 0
+		for i, f := range w.Flavors {
+			mark := d == cur.Domain && f.Name == cur.Flavor
+			items = append(items, menuItem{Label: f.Name, Detail: f.Describe, Mark: mark, Value: f.Name})
+			if mark {
+				sel = i
+			}
+		}
+		fi := r.choose(w.Label+" · flavor", items, sel)
+		if fi == nil {
+			return
+		}
+		flavor = fi.Value
+	}
+	r.domainCommand(d, []string{flavor}, flavor)
 }
 
 func (r *REPL) pickMode() {
