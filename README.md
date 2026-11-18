@@ -52,6 +52,8 @@ gemma4:31b-cloud ▸ why is the build failing? [Image #1]
 | **Web version** | A local dashboard to chat, approve tools, switch providers and models, edit API keys, and manage voices and skills. |
 | **Any backend** | Ollama (native API) · Anthropic · OpenAI · OpenRouter · Groq · LM Studio · vLLM · anything OpenAI-compatible. |
 
+**New here?** The [terminal guide](docs/README.md) covers every key and command, with examples: switching modes, switching domains and flavors (e.g. `software/project` → `software/work`), loops, tools and config.
+
 ---
 
 ## ▸ Install
