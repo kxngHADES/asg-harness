@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.4](https://github.com/kxngHADES/asg-harness/compare/v0.1.3...v0.1.4) (2026-11-18)
+
+
+### Features
+
+* domains with enforced loops, self-review, ask_user, work folder and tools folder ([79fadc3](https://github.com/kxngHADES/asg-harness/commit/79fadc33c926ea42e407919d78f12eb011443239))
+* domains with enforced loops, self-review, ask_user, work folder and tools folder ([79fadc3](https://github.com/kxngHADES/asg-harness/commit/79fadc33c926ea42e407919d78f12eb011443239))
+* domains with enforced loops, self-review, ask_user, work folder and tools folder ([f768331](https://github.com/kxngHADES/asg-harness/commit/f7683312cbec149c5d06cabe2f3f87b6681719dd))
+
 ## [0.1.3](https://github.com/kxngHADES/asg-harness/compare/v0.1.2...v0.1.3) (2026-11-16)
 
 
