@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -79,6 +80,17 @@ type LoopState struct {
 	Outcome    string      `json:"outcome,omitempty"`
 	Started    time.Time   `json:"started"`
 	Updated    time.Time   `json:"updated"`
+	// Track is the domain/flavor the run follows.
+	Track Track `json:"track"`
+	// WorkDir is the folder with plan.md, checklist.md, walkthrough.md.
+	WorkDir string `json:"work_dir,omitempty"`
+	// FinaleAdded is set once the track's final steps (security test,
+	// report, …) have been added after the plan passed verification.
+	FinaleAdded bool `json:"finale_added,omitempty"`
+	// Reviewed is set once the final multi-pass review has run; Reviews
+	// holds one line per pass.
+	Reviewed bool     `json:"reviewed,omitempty"`
+	Reviews  []string `json:"reviews,omitempty"`
 }
 
 // Current returns the step being worked on next, or nil.
@@ -176,11 +188,27 @@ func (s *Session) RunLoop(ctx context.Context, objective string, opt LoopOptions
 				step.Status, step.Attempts = StepPending, 0
 			}
 		}
+		if st.Track.Domain != "" {
+			s.Track = st.Track
+		}
+		if st.WorkDir != "" {
+			if rel, err := filepath.Rel(cwd, st.WorkDir); err == nil {
+				s.Work = &Workspace{Dir: st.WorkDir, Rel: filepath.ToSlash(rel)}
+			}
+		}
 	} else {
-		st = &LoopState{Objective: strings.TrimSpace(objective), Project: cwd, Started: time.Now()}
+		st = &LoopState{Objective: strings.TrimSpace(objective), Project: cwd, Started: time.Now(), Track: s.Track}
 		for _, t := range opt.Steps {
 			st.Steps = append(st.Steps, &LoopStep{Title: t, Status: StepPending})
 		}
+		s.Work = nil // every run gets its own work folder
+	}
+	if w := s.EnsureWork(st.Objective); w != nil {
+		st.WorkDir = w.Dir
+	}
+	save := func() {
+		saveLoop(st)
+		s.Work.loopFiles(st)
 	}
 	switch {
 	case opt.Verify != "":
@@ -194,11 +222,12 @@ func (s *Session) RunLoop(ctx context.Context, objective string, opt LoopOptions
 		st.Verify = ""
 	}
 	st.Status, st.Outcome = LoopRunning, ""
-	saveLoop(st)
+	save()
 
 	finish := func(status, outcome string) (*LoopState, error) {
 		st.Status, st.Outcome = status, outcome
-		saveLoop(st)
+		save()
+		s.Work.walkthrough(st)
 		report(ev, st, outcome)
 		// Leave a record in the conversation so the user can ask about it.
 		s.History = append(s.History,
@@ -208,7 +237,7 @@ func (s *Session) RunLoop(ctx context.Context, objective string, opt LoopOptions
 	}
 	pause := func(err error) (*LoopState, error) {
 		st.Status, st.Outcome = LoopPaused, "paused — /loop resume to continue"
-		saveLoop(st)
+		save()
 		return st, err
 	}
 
@@ -220,13 +249,13 @@ func (s *Session) RunLoop(ctx context.Context, objective string, opt LoopOptions
 				return pause(ctx.Err())
 			}
 			st.Status, st.Outcome = LoopFailed, err.Error()
-			saveLoop(st)
+			save()
 			return st, err
 		}
 		for _, t := range steps {
 			st.Steps = append(st.Steps, &LoopStep{Title: t, Status: StepPending})
 		}
-		saveLoop(st)
+		save()
 	}
 	verifyNote := "no verification command (set loop.verify in config or /loop verify <cmd>)"
 	if st.Verify != "" {
@@ -237,32 +266,60 @@ func (s *Session) RunLoop(ctx context.Context, objective string, opt LoopOptions
 	for iters := 0; ; {
 		step := st.Current()
 		if step == nil {
-			// Every step is done: prove it with the verification command.
-			if st.Verify == "" {
-				return finish(LoopDone, "done — all steps complete")
+			// Every step is done: prove it with the verification command,
+			// then run the track's final steps, then review the whole result.
+			outcome := "done — all steps complete"
+			verified := false
+			if st.Verify != "" {
+				report(ev, st, "verifying: "+st.Verify)
+				out, ok, skipped := s.runVerify(ctx, st.Verify, ev)
+				if ctx.Err() != nil {
+					return pause(ctx.Err())
+				}
+				switch {
+				case skipped:
+					outcome = "done — all steps complete (verification skipped)"
+				case ok:
+					outcome, verified = "done — all steps complete and `"+st.Verify+"` passes", true
+				default:
+					if st.Fixes >= 3 {
+						return finish(LoopFailed, "stopped — `"+st.Verify+"` still fails after 3 fix attempts")
+					}
+					st.Fixes++
+					st.Steps = append(st.Steps, &LoopStep{
+						Title:   fmt.Sprintf("Fix the failures so `%s` passes", st.Verify),
+						Status:  StepPending,
+						Context: "The verification command currently fails with:\n" + tail(out, 2500),
+					})
+					save()
+					continue
+				}
 			}
-			report(ev, st, "verifying: "+st.Verify)
-			out, ok, skipped := s.runVerify(ctx, st.Verify, ev)
-			if ctx.Err() != nil {
-				return pause(ctx.Err())
+			if finale := st.Track.FlavorSpec().Finale; !st.FinaleAdded && len(finale) > 0 {
+				st.FinaleAdded = true
+				for _, t := range finale {
+					st.Steps = append(st.Steps, &LoopStep{Title: t, Status: StepPending})
+				}
+				save()
+				report(ev, st, fmt.Sprintf("plan passed — adding %d final step(s) for %s", len(finale), st.Track))
+				continue
 			}
-			if skipped {
-				return finish(LoopDone, "done — all steps complete (verification skipped)")
+			if !st.Reviewed {
+				st.Reviewed = true
+				changed := s.finalReview(ctx, st, ev)
+				if ctx.Err() != nil {
+					st.Reviewed = false
+					return pause(ctx.Err())
+				}
+				save()
+				if changed && verified {
+					// The review changed files: verify again (and add fix
+					// steps if that now fails) before finishing.
+					report(ev, st, "the final review changed things — verifying again")
+					continue
+				}
 			}
-			if ok {
-				return finish(LoopDone, "done — all steps complete and `"+st.Verify+"` passes")
-			}
-			if st.Fixes >= 3 {
-				return finish(LoopFailed, "stopped — `"+st.Verify+"` still fails after 3 fix attempts")
-			}
-			st.Fixes++
-			st.Steps = append(st.Steps, &LoopStep{
-				Title:   fmt.Sprintf("Fix the failures so `%s` passes", st.Verify),
-				Status:  StepPending,
-				Context: "The verification command currently fails with:\n" + tail(out, 2500),
-			})
-			saveLoop(st)
-			continue
+			return finish(LoopDone, outcome)
 		}
 		if iters >= lc.MaxIterations {
 			return finish(LoopPaused, fmt.Sprintf("paused after %d iterations (loop.max_iterations) — /loop resume to keep going", iters))
@@ -288,7 +345,7 @@ func (s *Session) RunLoop(ctx context.Context, objective string, opt LoopOptions
 		case err != nil:
 			step.Attempts--
 			st.Status, st.Outcome = LoopFailed, err.Error()
-			saveLoop(st)
+			save()
 			return st, err
 		default:
 			if q := blockedQuestion(reply); q != "" {
@@ -306,7 +363,7 @@ func (s *Session) RunLoop(ctx context.Context, objective string, opt LoopOptions
 				step.Status, step.Failure = StepDone, ""
 				step.Notes = w.notes(reply)
 				report(ev, st, fmt.Sprintf("✓ %s — %s", label, reason))
-				saveLoop(st)
+				save()
 				continue
 			}
 			step.Failure = reason
@@ -333,7 +390,7 @@ func (s *Session) RunLoop(ctx context.Context, objective string, opt LoopOptions
 			st.Steps = append(st.Steps[:idx], append(repl, st.Steps[idx+1:]...)...)
 			report(ev, st, fmt.Sprintf("split step %d into %d smaller steps", idx+1, len(subs)))
 		}
-		saveLoop(st)
+		save()
 	}
 }
 
@@ -343,6 +400,8 @@ func (s *Session) child() *Session {
 	c := s.app.NewSession()
 	c.allowed = s.allowed
 	c.noTools = s.noTools
+	c.Track = s.Track
+	c.Work = s.Work
 	return c
 }
 
@@ -369,6 +428,9 @@ func (s *Session) planLoop(ctx context.Context, st *LoopState, ev Events) ([]str
 	b.WriteString("Make a plan to reach this objective in this project.\n")
 	b.WriteString("First take a quick look at the relevant files (list_dir, glob, grep, read_file) — only a few calls.\n")
 	b.WriteString("Then reply with ONLY a numbered list of 2–8 steps.")
+	if f := st.Track.FlavorSpec(); len(f.Phases) > 0 {
+		fmt.Fprintf(&b, "\nThe steps must follow the %s loop from the system prompt, in order (merge or skip phases that don't apply).", st.Track)
+	}
 	if st.Verify != "" {
 		fmt.Fprintf(&b, "\nAt the end the harness runs `%s` to check the work.", st.Verify)
 	}
@@ -385,7 +447,78 @@ func (s *Session) planLoop(ctx context.Context, st *LoopState, ev Events) ([]str
 	if len(steps) == 0 {
 		steps = []string{st.Objective} // no usable plan: treat it as one step
 	}
-	return steps, nil
+	return c.reviewPlan(ctx, steps, ev), nil
+}
+
+// planLenses are the angles the planner re-checks its plan from.
+var planLenses = []string{
+	"order and dependencies — can each step be done using only what the steps before it produce? Where code is added, does the caller come before the function it calls?",
+	"completeness — if every step is done, is the objective fully reached, including the tests, docs, checks or report the domain loop requires?",
+	"size — is every step one small, concrete change that can be finished in one go? Split big steps and merge trivial ones",
+	"scope — does any step do something the objective does not need right now? Remove it",
+}
+
+// reviewPlan has the planner go over its plan Review.Passes times (at
+// least 4 by default), each time from a different angle, and returns the
+// corrected plan.
+func (s *Session) reviewPlan(ctx context.Context, steps []string, ev Events) []string {
+	cfg := s.app.Config.Get().Review
+	if cfg.Passes <= 0 {
+		return steps
+	}
+	lastOK := true
+	for i := 0; i < cfg.MaxPasses; i++ {
+		if i >= cfg.Passes && lastOK {
+			break
+		}
+		lens := planLenses[i%len(planLenses)]
+		var b strings.Builder
+		fmt.Fprintf(&b, "[Plan review pass %d of at least %d]\nLens: %s\n\nThe plan:\n", i+1, cfg.Passes, lens)
+		for j, t := range steps {
+			fmt.Fprintf(&b, "%d. %s\n", j+1, t)
+		}
+		b.WriteString("\nCheck the plan from this angle only. If you find a real mistake, reply with ONLY the corrected full numbered list. Otherwise reply with one line: REVIEW OK: <what you checked>.")
+		reply, err := s.send(ctx, llm.Message{Content: b.String()}, quiet{ev}, turnOpts{
+			mode: ModePlan, extra: plannerRules, maxRounds: 1, noTools: true, temperature: &low,
+		})
+		if err != nil {
+			return steps
+		}
+		total := cfg.Passes
+		if i >= cfg.Passes {
+			total = cfg.MaxPasses
+		}
+		ok, why := reviewOK(reply)
+		fixed := ParseSteps(reply)
+		if !ok && (len(fixed) == 0 || slices.Equal(fixed, steps)) {
+			ok, why = true, "plan unchanged"
+		}
+		lastOK = ok
+		if ok {
+			reviewReport(ev, i+1, total, "plan "+lensName(lens), true, why)
+			continue
+		}
+		reviewReport(ev, i+1, total, "plan "+lensName(lens), false, fmt.Sprintf("plan revised: %d → %d steps", len(steps), len(fixed)))
+		steps = fixed
+	}
+	return steps
+}
+
+// finalReview goes over the finished run several times, in a fresh
+// context, with tools so it can check and fix the actual files. It
+// reports whether anything was changed.
+func (s *Session) finalReview(ctx context.Context, st *LoopState, ev Events) bool {
+	if s.app.Config.Get().Review.Passes <= 0 {
+		return false
+	}
+	report(ev, st, "final review of the whole result")
+	c := s.child()
+	defer s.absorb(c)
+	pre := fmt.Sprintf("OBJECTIVE: %s\n\nThe loop harness has finished every step. What was done:\n%s\nYou are now reviewing the finished work. Read the files that were changed; do not trust the summary.",
+		st.Objective, clip(LoopSummary(st), 3500))
+	res := c.selfReview(ctx, ModeBuild, pre, "", ev)
+	st.Reviews = res.notes
+	return res.changed
 }
 
 const workerRules = `
@@ -395,7 +528,7 @@ const workerRules = `
 - Read a file before editing it, and copy old_string for edit_file exactly from what read_file showed.
 - After changing something, check it: read it back, or build / run the tests.
 - Finish with 1–3 sentences saying what you changed.
-- If you truly cannot continue without the user (missing information, credentials, a decision only they can make), reply with one line starting with BLOCKED: and your question.`
+- If you need information only the user has (requirements, credentials, a decision), call ask_user and continue with the answer. If you truly cannot continue at all, reply with one line starting with BLOCKED: and your question.`
 
 // work records what a worker did during one attempt.
 type work struct {
@@ -503,8 +636,13 @@ func (s *Session) reviewStep(ctx context.Context, st *LoopState, step *LoopStep,
 		b.WriteString(strings.Join(calls, "\n") + "\n")
 	}
 	fmt.Fprintf(&b, "\nWORKER'S FINAL MESSAGE:\n%s\n\nWas the step done? One line: PASS: … or FAIL: …", clip(reply, 1500))
+	system := reviewerSystem
+	if rules := st.Track.FlavorSpec().Rules; len(rules) > 0 {
+		// The track's hard rules (e.g. no anticipation code) are part of done.
+		system += "\nFAIL the step if the tool calls show it broke one of these rules:\n- " + strings.Join(rules, "\n- ")
+	}
 	verdict, err := c.send(ctx, llm.Message{Content: b.String()}, quiet{ev}, turnOpts{
-		maxRounds: 1, noTools: true, temperature: &zero, system: reviewerSystem,
+		maxRounds: 1, noTools: true, temperature: &zero, system: system,
 	})
 	if err != nil {
 		return false, "", err

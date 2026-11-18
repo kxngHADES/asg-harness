@@ -28,7 +28,21 @@ func (q *inputQueue) Read(p []byte) (int, error) {
 	q.mu.Unlock()
 	n, err := q.r.Read(p)
 	markShiftTab(p[:n])
+	markCtrlT(p[:n])
 	return n, err
+}
+
+// keyCtrlT stands in for Ctrl+T, which the line editor would otherwise
+// treat as "transpose characters" and never pass on. It is rewritten to
+// Ctrl+] — a byte the editor hands to the key callback untouched.
+const keyCtrlT = 0x1d
+
+func markCtrlT(b []byte) {
+	for i, c := range b {
+		if c == 0x14 {
+			b[i] = keyCtrlT
+		}
+	}
 }
 
 // keyShiftTab stands in for Shift+Tab (ESC [ Z). The line editor reports

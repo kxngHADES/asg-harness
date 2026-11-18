@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kxngHADES/asg-harness/internal/llm"
@@ -30,11 +31,18 @@ type Tool struct {
 	// NeedsApproval marks tools that change state or reach the network.
 	NeedsApproval bool
 	Run           func(ctx context.Context, args json.RawMessage) (string, error)
+	// RunMedia, when set, is used instead of Run by tools that also return
+	// images (e.g. screenshots) for the model to look at.
+	RunMedia func(ctx context.Context, args json.RawMessage) (string, []llm.Image, error)
 	// Describe renders a one-line summary of a call for approval prompts.
 	Describe func(args json.RawMessage) string
+	// Source says where the tool comes from: "builtin", "bundled" (the
+	// repo's tools/ folder, compiled in) or the folder of a script tool.
+	Source string
 }
 
 type Registry struct {
+	mu    sync.RWMutex
 	tools map[string]*Tool
 	order []string
 }
@@ -42,15 +50,23 @@ type Registry struct {
 func NewRegistry() *Registry { return &Registry{tools: map[string]*Tool{}} }
 
 func (r *Registry) Add(t *Tool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if _, ok := r.tools[t.Spec.Name]; !ok {
 		r.order = append(r.order, t.Spec.Name)
 	}
 	r.tools[t.Spec.Name] = t
 }
 
-func (r *Registry) Get(name string) *Tool { return r.tools[name] }
+func (r *Registry) Get(name string) *Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.tools[name]
+}
 
 func (r *Registry) All() []*Tool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make([]*Tool, 0, len(r.order))
 	for _, n := range r.order {
 		out = append(out, r.tools[n])
@@ -145,7 +161,26 @@ func Builtins() *Registry {
 	r.Add(globTool())
 	r.Add(grepTool())
 	r.Add(fetchTool())
+	for _, t := range r.All() {
+		t.Source = "builtin"
+	}
 	return r
+}
+
+// Remove drops a tool (used when script tools are reloaded).
+func (r *Registry) Remove(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.tools[name]; !ok {
+		return
+	}
+	delete(r.tools, name)
+	for i, n := range r.order {
+		if n == name {
+			r.order = append(r.order[:i], r.order[i+1:]...)
+			break
+		}
+	}
 }
 
 func bashTool() *Tool {

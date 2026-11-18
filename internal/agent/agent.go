@@ -21,6 +21,7 @@ import (
 	"github.com/kxngHADES/asg-harness/internal/perms"
 	"github.com/kxngHADES/asg-harness/internal/skills"
 	"github.com/kxngHADES/asg-harness/internal/tools"
+	bundled "github.com/kxngHADES/asg-harness/tools"
 )
 
 type App struct {
@@ -40,7 +41,7 @@ type App struct {
 }
 
 func NewApp(cfg *config.Store) *App {
-	return &App{
+	a := &App{
 		Config:  cfg,
 		Tools:   tools.Builtins(),
 		Skills:  skills.NewManager(config.Dir()),
@@ -48,6 +49,33 @@ func NewApp(cfg *config.Store) *App {
 		Perms:   perms.Load(config.Dir()),
 		Memory:  memory.New(config.Dir()),
 	}
+	for _, t := range bundled.Bundled() {
+		a.Tools.Add(t)
+	}
+	a.ReloadTools()
+	return a
+}
+
+// ToolDirs are the folders searched for script tools, project first.
+func ToolDirs() []string {
+	return []string{filepath.Join(".asg", "tools"), filepath.Join(config.Dir(), "tools")}
+}
+
+// ReloadTools (re)loads script tools from ToolDirs. They never replace a
+// built-in or bundled tool. It returns the manifests that failed to load.
+func (a *App) ReloadTools() []error {
+	for _, t := range a.Tools.All() {
+		if t.Source != "builtin" && t.Source != "bundled" {
+			a.Tools.Remove(t.Spec.Name)
+		}
+	}
+	scripts, errs := tools.LoadScriptTools(ToolDirs()...)
+	for _, t := range scripts {
+		if a.Tools.Get(t.Spec.Name) == nil {
+			a.Tools.Add(t)
+		}
+	}
+	return errs
 }
 
 // Provider returns the active provider and its model.
@@ -100,10 +128,42 @@ type Session struct {
 	// Plan is the latest plan written in plan mode, and PlanGoal the request
 	// that produced it. Build mode keeps the plan in view; /loop can run it.
 	Plan, PlanGoal string
+
+	// Track is the domain and sub-mode (software/work, cyber/red, …).
+	Track Track
+	// Work is the folder holding plan.md, checklist.md, walkthrough.md and
+	// activity.md for the current build; created on the first build turn.
+	Work *Workspace
+	// pendingImages are images returned by tools this round, shown to the
+	// model after the tool results.
+	pendingImages []llm.Image
 }
 
 func (a *App) NewSession() *Session {
-	return &Session{app: a, allowed: map[string]bool{}}
+	t := Track{Domain: DomainSoftware}
+	if a.Config != nil {
+		cfg := a.Config.Get()
+		if d, ok := ParseDomain(cfg.Domain); ok {
+			t.Domain = d
+		}
+		t, _ = t.WithFlavor(cfg.Flavor)
+	}
+	if t.Flavor == "" {
+		t.Flavor = t.FlavorSpec().Name
+	}
+	return &Session{app: a, allowed: map[string]bool{}, Track: t}
+}
+
+// EnsureWork returns the session's work folder, creating it for request
+// if there is none yet.
+func (s *Session) EnsureWork(request string) *Workspace {
+	if s.Work == nil {
+		cwd, _ := os.Getwd()
+		if w, err := newWorkspace(cwd, request); err == nil {
+			s.Work = w
+		}
+	}
+	return s.Work
 }
 
 func (s *Session) Clear() {
@@ -113,6 +173,7 @@ func (s *Session) Clear() {
 	s.Usage = llm.Usage{}
 	s.noTools = false
 	s.Plan, s.PlanGoal = "", ""
+	s.Work = nil
 }
 
 // SystemPrompt builds the system prompt for the current directory, skills
@@ -125,6 +186,7 @@ func (s *Session) systemPrompt(mode Mode, extra string) string {
 	var b strings.Builder
 	b.WriteString(`You are ASG, an agentic assistant running in the user's terminal. You help with software engineering and general tasks.
 You can call tools to read and edit files, run shell commands, search, and fetch web pages. Prefer acting with tools over guessing.
+If information you need is missing and you cannot find it in the project, call ask_user — at any moment — instead of guessing.
 Keep answers concise and use Markdown. When you change files, say what you changed. Never invent tool results.`)
 	fmt.Fprintf(&b, "\n\nEnvironment:\n- Working directory: %s\n- OS: %s/%s\n- Date: %s\n", cwd, runtime.GOOS, runtime.GOARCH, time.Now().Format("2006-01-02"))
 
@@ -144,7 +206,11 @@ Keep answers concise and use Markdown. When you change files, say what you chang
 	if cfg.SystemPrompt != "" {
 		b.WriteString("\n" + cfg.SystemPrompt + "\n")
 	}
+	b.WriteString(s.Track.instructions())
 	b.WriteString(mode.instructions())
+	if s.Work != nil && extra == "" && !mode.ReadOnly() {
+		b.WriteString(s.Work.instructions(s.Track))
+	}
 	if mode.orBuild() == ModeBuild && s.Plan != "" && extra == "" {
 		fmt.Fprintf(&b, "\n\n## Current plan (from plan mode)\nGoal: %s\n%s\nWork through it in order. After each step check the result (read the file back, build or run tests) before moving on.\n", s.PlanGoal, clip(s.Plan, 4000))
 	}
@@ -187,6 +253,7 @@ func SkillPrompt(sk *skills.Skill) string {
 
 func (s *Session) toolset() []*tools.Tool {
 	all := append(s.app.Tools.All(), memoryTools(s.app.Memory)...)
+	all = append(all, askTool())
 	if len(s.app.Skills.List()) > 0 {
 		all = append(all, s.skillTool())
 	}
@@ -198,14 +265,23 @@ func (s *Session) Send(ctx context.Context, user llm.Message, ev Events) (string
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cfg := s.app.Config.Get()
-	mode := s.Mode
+	mode := s.Mode.orBuild()
 	if mode == ModeLoop { // a plain Send in loop mode (e.g. the dashboard) builds
 		mode = ModeBuild
+	}
+	if mode == ModeBuild {
+		s.EnsureWork(user.Content)
 	}
 	reply, err := s.send(ctx, user, ev, turnOpts{mode: mode, maxRounds: cfg.MaxToolRounds})
 	if errors.Is(err, errRoundLimit) {
 		ev.Notice(fmt.Sprintf("stopped after %d tool rounds (raise max_tool_rounds in config)", cfg.MaxToolRounds))
 		return "", nil
+	}
+	if err == nil {
+		reply = s.selfReview(ctx, mode, "", reply, ev).answer
+		if ctx.Err() != nil {
+			return reply, ctx.Err()
+		}
 	}
 	if err == nil && mode == ModePlan && len(ParseSteps(reply)) > 0 {
 		s.Plan, s.PlanGoal = reply, user.Content
@@ -241,6 +317,7 @@ func (s *Session) send(ctx context.Context, user llm.Message, ev Events, o turnO
 		return "", err
 	}
 	_, pc := cfg.Active()
+	ctx = withEvents(ctx, ev)
 	user.Role = llm.RoleUser
 	s.History = append(s.History, user)
 
@@ -310,17 +387,28 @@ func (s *Session) send(ctx context.Context, user llm.Message, ev Events, o turnO
 			} else {
 				result, isErr = s.runTool(ctx, call, byName, cfg.AutoApprove || s.app.Yolo, ev)
 			}
+			summary := describeCall(byName[call.Name], call)
 			if o.onTool != nil {
-				o.onTool(call, describeCall(byName[call.Name], call), result, isErr)
+				o.onTool(call, summary, result, isErr)
 			}
+			s.Work.Log(call, summary, result, isErr)
 			s.History = append(s.History, llm.Message{Role: llm.RoleTool, Content: result, ToolCallID: call.ID, ToolName: call.Name})
 			if ctx.Err() != nil {
 				// Answer the remaining calls so the history stays well-formed.
 				for _, rest := range msg.ToolCalls[i+1:] {
 					s.History = append(s.History, llm.Message{Role: llm.RoleTool, Content: "cancelled", ToolCallID: rest.ID, ToolName: rest.Name})
 				}
+				s.pendingImages = nil
 				return "", ctx.Err()
 			}
+		}
+		if len(s.pendingImages) > 0 {
+			// Tool results are text-only for most providers, so images a tool
+			// returned (screenshots) follow as a user message.
+			s.History = append(s.History, llm.Message{Role: llm.RoleUser,
+				Content: fmt.Sprintf("[%d image(s) returned by the tool calls above — look at them]", len(s.pendingImages)),
+				Images:  s.pendingImages})
+			s.pendingImages = nil
 		}
 	}
 	return "", errRoundLimit
@@ -357,7 +445,9 @@ func (s *Session) runTool(ctx context.Context, call llm.ToolCall, byName map[str
 		return msg, true
 	}
 	summary := describeCall(t, call)
-	if t.NeedsApproval && !auto {
+	// Writing the build's own working files (plan.md, checklist.md, …)
+	// never needs permission.
+	if t.NeedsApproval && !auto && !s.Work.containsCall(call) {
 		cwd, _ := os.Getwd()
 		rules, rerr := perms.RulesFor(call.Name, call.Args)
 		key := strings.Join(rules, " ")
@@ -380,7 +470,15 @@ func (s *Session) runTool(ctx context.Context, call llm.ToolCall, byName map[str
 		}
 	}
 	ev.ToolStart(call, summary)
-	out, err := t.Run(ctx, call.Args)
+	var out string
+	var err error
+	if t.RunMedia != nil {
+		var imgs []llm.Image
+		out, imgs, err = t.RunMedia(ctx, call.Args)
+		s.pendingImages = append(s.pendingImages, imgs...)
+	} else {
+		out, err = t.Run(ctx, call.Args)
+	}
 	if err != nil {
 		msg := "error: " + err.Error()
 		ev.ToolEnd(call, msg, true)

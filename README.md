@@ -159,7 +159,7 @@ asg -loop -yolo -p "add a --json flag to list, with tests"   # unattended loop r
 
 ## ▸ Working modes
 
-Press **Shift+Tab** to cycle modes, or use `/mode`. The prompt shows the current mode (build has no badge).
+Press **Shift+Tab** to cycle modes, or use `/mode`. The prompt always shows the mode as a fixed-width badge followed by the domain, e.g. `BUILD software/work qwen3.5:9b ▸`, and a status line above it shows every mode with the current one highlighted. Repeated Shift+Tab / Ctrl+T presses redraw that one line in place instead of printing a new line each time.
 
 | Mode | Tools | Use it to |
 |---|---|---|
@@ -170,7 +170,53 @@ Press **Shift+Tab** to cycle modes, or use `/mode`. The prompt shows the current
 
 `/plan <request>`, `/build <request>`, `/ask <question>` switch and send in one go. `asg -mode plan` starts in a mode.
 
-**YOLO.** **Ctrl+Y** (or `/yolo`) toggles running tools without asking; the prompt shows `⚡yolo` while it is on. At a GATE, Ctrl+Y turns YOLO on *and* approves the waiting call. YOLO lasts until you toggle it off or quit, so it never sticks around by accident.
+**YOLO.** **Ctrl+Y** (or `/yolo`) toggles running tools without asking; the prompt shows `⚡YOLO` while it is on. At a GATE, Ctrl+Y turns YOLO on *and* approves the waiting call. YOLO lasts until you toggle it off or quit, so it never sticks around by accident.
+
+## ▸ Domains
+
+Modes say *how* ASG works; domains say *what kind of work* it does. Each domain has sub-modes (flavors), and each flavor brings **the loop the model must follow**, hard rules, and the angles it reviews its own work from. Press **Ctrl+T** to cycle domains, `/domain` for a menu, or use a shortcut that switches and sends in one go: `/cyber blue audit the nginx config`. The choice is saved as your default; `asg -domain software/work` sets it from the command line.
+
+| Domain | Flavors | The loop |
+|---|---|---|
+| **software** | `project` *(default)* · `work` · `hobby` | **work** is strict: only code this exact build uses — no anticipation code; write the *caller* before the function; then test → document → verify (fix the root cause and loop until everything passes) → security test |
+| **docs** | `update` · `write` | screenshot the rendered docs → decide changes from the image → edit → screenshot again and compare, until it renders right |
+| **cyber** | `red` · `blue` | red: scope → recon → enumerate → analyse → validate → report. blue: inventory → threat model → detect → harden → respond → report. Confirms scope and authorization first; ends with a report of **everything it did and found** |
+| **devops** | `review` · `pipeline` | inventory every pipeline/infra file → correctness → security (permissions, pinning, secrets, injection) → speed & reliability → findings with exact fixes |
+| **pm** | `plan` · `sprint` · `status` | scope → breakdown → sequence → estimate → risks → communicate, reviewed from four planning angles (dependencies, estimates, risks, acceptance) |
+
+In a loop run the plan follows the flavor's phases, the step reviewer enforces its rules (e.g. FAIL on anticipation code), and once everything passes verification the flavor's **final steps** run — the security test for software/work, the full report for cyber and devops review, a last screenshot pass for docs.
+
+## ▸ Self-review
+
+After every answer — in every mode and domain — ASG goes back over its own work **at least 4 times**, each pass from a different angle (the domain's lenses first, then logic, completeness, edge cases, evidence). A pass either confirms (`REVIEW OK`) or fixes the problem and gives the corrected answer; if the last required pass still found something, more passes run (up to `max_passes`). You see one line per pass. Loop runs review their plan 4 times before starting and the finished result 4 times at the end. `/review 6` changes the minimum, `/review off` turns it off, `asg -review N` sets it per run.
+
+## ▸ Asking you
+
+When information is missing that it can't find in the project — requirements, credentials, scope, a decision only you can make — the model calls `ask_user` at any moment: the turn pauses, shows the question (with numbered suggestions when it has them), and continues with your answer. It works in every mode, including loop runs and `asg -p` in a terminal.
+
+## ▸ Work folder
+
+In build mode and loop runs ASG keeps resources you can read while it works, in `.asg/work/<date>-<task>/` in your project:
+
+| File | Written by | What's in it |
+|---|---|---|
+| `plan.md` | model (loop: harness) | goal, approach, steps — written first |
+| `checklist.md` | model (loop: harness) | `- [ ]` / `- [x]` per step, ticked as it goes |
+| `walkthrough.md` | model (loop: harness) | what changed, where, why, how to check it |
+| `notes.md` | model | decisions, assumptions, open questions |
+| `report.md` | model | cyber and devops: everything done and found |
+| `activity.md` | harness | every tool call with time, summary and result — complete even if the model forgets |
+
+Writes inside the work folder never ask for permission. `/work` shows the folder and the checklist. The folder is only created once something is written, so a chat turn leaves nothing behind. Add `.asg/work/` to `.gitignore` if you don't want to commit it.
+
+## ▸ Tools
+
+Besides the built-in file, shell and web tools, ASG ships **bundled tools** from the repo's [`tools/`](tools) folder, compiled in for every user:
+
+- **`office_document`** — writes Word `.docx`, PowerPoint `.pptx` and Excel `.xlsx` from Markdown (or exact slides / sheets / CSV). Pure Go: no Office, Python or other install needed.
+- **`screenshot`** — renders a URL, `.html` or `.md` file in headless Chrome/Edge/Chromium (or captures the screen) and shows the image to the model. Docs mode is built on it. Needs a vision-capable model; `ASG_BROWSER` points at a browser if it isn't found.
+
+Anyone can add **script tools** without recompiling: a folder with a `tool.json` and a script in any language, in `~/.asg/tools/` (you) or `.asg/tools/` (the project). `asg tool new <name>` scaffolds one, `/tools` lists everything and reloads script tools. See [tools/README.md](tools/README.md).
 
 ## ▸ Loop harness
 
@@ -189,7 +235,12 @@ objective ─► PLAN (read-only look around → numbered steps)
       └──────┘
              ▼  all steps done
          VERIFY              runs your test/build command; failures become a "fix" step (up to 3×)
+             ▼
+         FINAL STEPS         the domain's finale: security test (software/work), report (cyber, devops), …
+         REVIEW ×4           the whole result from four angles; if it changed anything, verify again
 ```
+
+The plan itself is reviewed 4 times before the first step runs, and `plan.md`, `checklist.md` and `walkthrough.md` in the work folder are kept in sync by the harness.
 
 ```text
 /loop add a --json flag to the list command, with tests    start
@@ -268,6 +319,8 @@ Manage providers in the dashboard, or edit `~/.asg/config.json` (`$ASG_HOME` ove
   },
   "auto_approve": false,
   "loop": { "max_iterations": 30, "step_attempts": 3, "step_rounds": 15, "verify": "" },
+  "review": { "passes": 4, "max_passes": 6 },
+  "domain": "software", "flavor": "work",
   "audio": {
     "enabled": true,
     "engine": "auto",
@@ -288,8 +341,12 @@ Press **/** on an empty prompt to open the command menu: type to filter, **↑�
 | Command | |
 |---|---|
 | `/mode` · **Shift+Tab** | pick or cycle the working mode (build, plan, loop, ask) |
+| `/domain` · **Ctrl+T** | pick or cycle the domain (software, docs, cyber, devops, pm) and its flavor |
+| `/software` · `/docs` · `/cyber` · `/devops` · `/pm [flavor] [text]` | switch domain (and flavor), and send the text in it |
 | `/plan` · `/build` · `/ask [text]` | switch mode, and send the text in it |
 | `/loop …` | run an objective with the loop harness (see *Loop harness*) |
+| `/review [n\|off]` | self-review passes after every answer (default 4) |
+| `/work` | show the work folder: plan, checklist, walkthrough, activity |
 | `/provider [name]` | pick a provider from a menu (asks for a missing API key), then its model |
 | `/model [name]` · `/models` | pick a model from a menu, set one by name, or list them |
 | `/init` | write or improve `ASG.md` for this project |
@@ -300,7 +357,8 @@ Press **/** on an empty prompt to open the command menu: type to filter, **↑�
 | `/voice …` · `/speak` | voice output: `/voice help` for everything |
 | `/skills` · `/skill add\|rm\|show` | manage skills |
 | `/<skill> <request>` | run a request with a skill |
-| `/tools` · `/yolo` · **Ctrl+Y** | list tools · toggle YOLO (run tools without asking) |
+| `/tools` · `/tool new <name>` | list (and reload) tools · scaffold a script tool |
+| `/yolo` · **Ctrl+Y** | toggle YOLO (run tools without asking) |
 | `/dashboard` | open the web version |
 | `/clear` · `/usage` · `/config` · `/exit` | |
 
@@ -312,7 +370,7 @@ End a line with `\` for multi-line input. Pasted multi-line text arrives as one 
 
 ## ▸ Security
 
-- **Gates.** `bash`, `write_file`, `edit_file` and `web_fetch` ask before running. `[a]`/`[g]` remember your answer per program or tool (see *Remembered permissions*) until you revoke it with `/permissions`. `-yolo` and Ctrl+Y last until you turn them off or quit; turning YOLO off also clears a saved `auto_approve`. Plan and ask modes don't offer the model any tool that changes your project.
+- **Gates.** `bash`, `write_file`, `edit_file`, `web_fetch`, `office_document`, `screenshot` and script tools (unless their `tool.json` says otherwise) ask before running; writes inside the build's own work folder don't. `[a]`/`[g]` remember your answer per program or tool (see *Remembered permissions*) until you revoke it with `/permissions`. `-yolo` and Ctrl+Y last until you turn them off or quit; turning YOLO off also clears a saved `auto_approve`. Plan and ask modes don't offer the model any tool that changes your project.
 - **Dashboard.** It listens on **127.0.0.1 only**, and each run gets a random token passed in the URL fragment. Every API call must carry that token, and requests with a non-localhost `Host` are rejected (DNS-rebinding protection). API keys are masked before they reach the browser.
 - **Updates.** Releases and `asg update` are verified against `checksums.txt`.
 

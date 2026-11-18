@@ -3,19 +3,24 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
+
+	"golang.org/x/term"
 
 	"github.com/kxngHADES/asg-harness/internal/agent"
 	"github.com/kxngHADES/asg-harness/internal/config"
 	"github.com/kxngHADES/asg-harness/internal/dashboard"
 	"github.com/kxngHADES/asg-harness/internal/llm"
 	"github.com/kxngHADES/asg-harness/internal/media"
+	"github.com/kxngHADES/asg-harness/internal/tools"
 	"github.com/kxngHADES/asg-harness/internal/tui"
 	"github.com/kxngHADES/asg-harness/internal/update"
 )
@@ -32,6 +37,8 @@ Usage:
   asg dashboard              web version: run the browser dashboard
   asg skill add <source>     import skills (path, URL, github:owner/repo[/path])
   asg skill list|rm <name>
+  asg tool new <name>        create a script tool in ~/.asg/tools
+  asg tool list              list the tools the model can call
   asg update                 update to the latest release
   asg version
 
@@ -44,6 +51,8 @@ func main() {
 	prompt := flag.String("p", "", "run a single prompt non-interactively")
 	yolo := flag.Bool("yolo", false, "auto-approve all tool calls for this run")
 	mode := flag.String("mode", "build", "starting mode: build, plan, ask or loop")
+	domain := flag.String("domain", "", "work domain and flavor, e.g. software/work, docs, cyber/blue, devops, pm/sprint")
+	reviews := flag.Int("review", 0, "self-review passes after every answer (default from config, 4; -1 turns it off)")
 	loop := flag.Bool("loop", false, "with -p: treat the prompt as an objective for the loop harness")
 	verify := flag.String("verify", "", "with -loop: command that proves the work (\"none\" to skip; default auto-detect)")
 	noOpen := flag.Bool("no-open", false, "with 'dashboard': don't open a browser")
@@ -99,12 +108,39 @@ func main() {
 	if *loop {
 		startMode = agent.ModeLoop
 	}
+	if *domain != "" || *reviews != 0 {
+		name, flavor, _ := strings.Cut(*domain, "/")
+		err := store.Update(func(c *config.Config) error {
+			if *domain != "" {
+				d, ok := agent.ParseDomain(name)
+				if !ok {
+					return fmt.Errorf("unknown -domain %q (software, docs, cyber, devops or pm)", name)
+				}
+				t := agent.Track{Domain: d}
+				if flavor != "" {
+					if t, ok = t.WithFlavor(flavor); !ok {
+						return fmt.Errorf("%s has no flavor %q", name, flavor)
+					}
+				}
+				c.Domain, c.Flavor = string(d), t.Flavor
+			}
+			if *reviews != 0 {
+				c.Review.Passes, c.Review.MaxPasses = *reviews, 0
+			}
+			return nil
+		})
+		if err != nil {
+			fatal(err)
+		}
+	}
 
 	switch {
 	case len(args) > 0 && args[0] == "dashboard":
 		fatal(dashboard.Serve(app, !*noOpen))
 	case len(args) > 0 && args[0] == "skill":
 		skillCmd(app, args[1:])
+	case len(args) > 0 && args[0] == "tool":
+		toolCmd(app, args[1:])
 	case *prompt != "":
 		oneShot(app, *prompt, args, startMode, *verify)
 	default:
@@ -145,9 +181,55 @@ func skillCmd(app *agent.App, args []string) {
 	}
 }
 
+func toolCmd(app *agent.App, args []string) {
+	if len(args) == 0 || args[0] == "list" {
+		for _, t := range app.Tools.All() {
+			fmt.Printf("%-18s %-8s %s\n", t.Spec.Name, sourceLabel(t.Source), t.Spec.Description)
+		}
+		fmt.Printf("\nscript tool folders: %s\n", strings.Join(agent.ToolDirs(), ", "))
+		return
+	}
+	if args[0] != "new" || len(args) < 2 {
+		fatal(fmt.Errorf("usage: asg tool new <name> | asg tool list"))
+	}
+	dir, err := tools.ScaffoldScriptTool(agent.ToolDirs()[1], args[1])
+	if err != nil {
+		fatal(err)
+	}
+	fmt.Printf("created %s — edit tool.json and run.py (see tools/README.md)\n", dir)
+}
+
+func sourceLabel(src string) string {
+	if src == "builtin" || src == "bundled" {
+		return src
+	}
+	return "script"
+}
+
 // printEvents streams a one-shot run to stdout; tools needing approval are
 // denied unless -yolo is set.
 type printEvents struct{}
+
+// AskUser lets ask_user reach a person when -p runs in a terminal.
+func (printEvents) AskUser(ctx context.Context, q string, choices []string) (string, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return agent.NoUserAnswer, nil
+	}
+	fmt.Fprintf(os.Stderr, "\n? %s\n", q)
+	for i, c := range choices {
+		fmt.Fprintf(os.Stderr, "  %d. %s\n", i+1, c)
+	}
+	fmt.Fprint(os.Stderr, "> ")
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil && line == "" {
+		return "", err
+	}
+	line = strings.TrimSpace(line)
+	if n, err := strconv.Atoi(line); err == nil && n >= 1 && n <= len(choices) {
+		line = choices[n-1]
+	}
+	return line, ctx.Err()
+}
 
 func (printEvents) Text(d string) { fmt.Print(d) }
 func (printEvents) ToolStart(c llm.ToolCall, s string) {

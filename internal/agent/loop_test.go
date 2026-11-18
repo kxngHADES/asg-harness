@@ -24,10 +24,11 @@ import (
 // chatReq is what the fake Ollama server sees.
 type chatReq struct {
 	Messages []struct {
-		Role      string `json:"role"`
-		Content   string `json:"content"`
-		ToolCalls []any  `json:"tool_calls"`
-		ToolName  string `json:"tool_name"`
+		Role      string   `json:"role"`
+		Content   string   `json:"content"`
+		ToolCalls []any    `json:"tool_calls"`
+		ToolName  string   `json:"tool_name"`
+		Images    []string `json:"images"`
 	} `json:"messages"`
 	Tools   []any          `json:"tools"`
 	Options map[string]any `json:"options"`
@@ -102,6 +103,10 @@ func testApp(t *testing.T, baseURL string) *App {
 	err = store.Update(func(c *config.Config) error {
 		c.Providers = map[string]*config.ProviderConfig{"ollama": {Type: "ollama", BaseURL: baseURL, Model: "qwen3.5:9b"}}
 		c.ActiveProvider = "ollama"
+		// These tests cover the loop mechanics; self-review and the track
+		// finale have their own tests (review_test.go).
+		c.Review.Passes = -1
+		c.Domain, c.Flavor = "software", "project"
 		return nil
 	})
 	if err != nil {
