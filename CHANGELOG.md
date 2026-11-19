@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/kxngHADES/asg-harness/compare/v0.1.4...v0.1.5) (2026-11-18)
+
+
+### Documentation
+
+* add a terminal guide with command examples ([#10](https://github.com/kxngHADES/asg-harness/issues/10)) ([53c5b4d](https://github.com/kxngHADES/asg-harness/commit/53c5b4db646ae805fd2123714dcaeb26058e5b81))
+
 ## [0.1.4](https://github.com/kxngHADES/asg-harness/compare/v0.1.3...v0.1.4) (2026-11-18)
 
 
