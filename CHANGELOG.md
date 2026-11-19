@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/kxngHADES/asg-harness/compare/v0.1.5...v0.1.6) (2026-11-19)
+
+
+### Bug Fixes
+
+* no limit on tool rounds per turn by default ([#12](https://github.com/kxngHADES/asg-harness/issues/12)) ([f6f589e](https://github.com/kxngHADES/asg-harness/commit/f6f589e5b488b569585a25382a118c997be22326))
+
 ## [0.1.5](https://github.com/kxngHADES/asg-harness/compare/v0.1.4...v0.1.5) (2026-11-18)
 
 
