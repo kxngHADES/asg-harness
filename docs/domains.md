@@ -105,7 +105,7 @@ the flavor doesn't change:
 
 **Ctrl+T** moves to the next domain:
 software → docs → cyber → devops → pm → software. You land on that domain's
-default flavor. Like Shift+Tab, it redraws the status line in place, and
+default flavor. Like Shift+Tab, it changes the status line in place, and
 whatever you had typed stays on the line.
 
 ```

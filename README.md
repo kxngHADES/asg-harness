@@ -28,12 +28,14 @@ and switches to Anthropic or any OpenAI-compatible API in one click.
 gemma4:31b-cloud ▸ why is the build failing? [Image #1]
   ◆ BASH go build ./...
   ┊ internal/tui/repl.go:151:33: cannot call pointer method Active
-  ▛▀ GATE ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-  ▌ EDIT_FILE requests permission
-  ▌ - if _, pc := r.app.Config.Get().Active(); pc != nil {
-  ▌ + cfg := r.app.Config.Get()
-  ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-  [y] run  [a] always edit_file here  [g] everywhere  [n] block ▸ y
+  ┃ GATE EDIT_FILE requests permission
+  ┃ - if _, pc := r.app.Config.Get().Active(); pc != nil {
+  ┃ + cfg := r.app.Config.Get()
+  ┃ Allow EDIT_FILE?
+  ┃ ▸ y  run it
+  ┃   a  always allow edit_file in this project
+  ┃   g  always allow edit_file everywhere
+  ┃   n  block
 ┃  FIXED 
 ┃ ▪ Active() has a pointer receiver, so I bound the config first.
   ── 6.2s · 4210↑ 188↓ tokens ──
@@ -161,7 +163,7 @@ asg -loop -yolo -p "add a --json flag to list, with tests"   # unattended loop r
 
 ## ▸ Working modes
 
-Press **Shift+Tab** to cycle modes, or use `/mode`. The prompt always shows the mode as a fixed-width badge followed by the domain, e.g. `BUILD software/work qwen3.5:9b ▸`, and a status line above it shows every mode with the current one highlighted. Repeated Shift+Tab / Ctrl+T presses redraw that one line in place instead of printing a new line each time.
+Press **Shift+Tab** to cycle modes, or use `/mode`. The status line right above the input shows every mode with the current one highlighted, then the domain, the model and YOLO, e.g. ` build  plan  loop  ask │ software/work │ qwen3.5:9b`. It is part of the live screen, so Shift+Tab / Ctrl+T just change it in place.
 
 | Mode | Tools | Use it to |
 |---|---|---|
@@ -364,7 +366,9 @@ Press **/** on an empty prompt to open the command menu: type to filter, **↑�
 | `/dashboard` | open the web version |
 | `/clear` · `/usage` · `/config` · `/exit` | |
 
-End a line with `\` for multi-line input. Pasted multi-line text arrives as one message. **Ctrl+C** stops a running turn, and pressing it twice at the prompt quits. **Tab** completes commands. Set `NO_COLOR=1` for plain output, or `ASG_NO_ANIMATION=1` to keep the colours but skip the animations.
+The input grows as you type: **Ctrl+J** (or Alt+Enter, or ending a line with `\`) adds a new line, and pasted multi-line text arrives as one message. **↑/↓** recall earlier inputs. Typing `/` opens a filtered command menu under the input (**Tab** completes, **Enter** runs). Pickers, the permission gate and ASG's questions are forms you answer with the arrow keys and Enter (**Esc** closes a picker). Replies are rendered as Markdown as they stream. **Ctrl+C** stops a running turn, and pressing it twice at the prompt quits. Set `NO_COLOR=1` for plain output, `ASG_NO_ANIMATION=1` to keep the colours but skip the animations, or `ASG_DEBUG=asg.log` to write diagnostics to a file.
+
+The terminal UI is built on the [Charm](https://charm.land/#libs) libraries — Bubble Tea, Bubbles, Lip Gloss, Huh, Glamour, Log and Harmonica. Contributors: read [AGENTS.md](AGENTS.md) before changing it.
 
 **The crab.** ASG's mascot is pixel art drawn with half-block characters (two pixels per cell, true colour or 256 colours). It scuttles in when you start `asg`, and while ASG is thinking or running a tool it works away under your prompt, tapping its claws with sparks of thought, then gets out of the way when the reply streams in. Narrow terminals and `ASG_NO_ANIMATION` get a one-line crab instead. The dashboard shows the same sprite as an animated SVG that switches to its working animation while a reply is in progress. The art lives in `internal/sprite`; after changing it, run `UPDATE_SPRITES=1 go test ./internal/sprite/` to refresh the SVGs in `docs/`.
 
@@ -398,7 +402,7 @@ internal/sprite       the pixel-art crab: frames, animations, SVG export
 internal/skills       SKILL.md loading and importing
 internal/media        images: files, drag-and-drop paths, clipboard
 internal/audio        speech: OS voice, Ollama / OpenAI speech models
-internal/tui          terminal UI
+internal/tui          terminal UI (Bubble Tea + Charm libraries — see AGENTS.md)
 internal/dashboard    HTTP server + embedded web UI
 internal/update       self-update
 ```

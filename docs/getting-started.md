@@ -17,69 +17,81 @@ folder; `/init` writes an `ASG.md` for you.
 
 ## Reading the screen
 
-When `asg` starts you see the crab banner, then a key strip and the status line:
+When `asg` starts you see the crab banner. Below it, at the bottom of the
+terminal, is the live input area:
 
 ```
   ASG  agent shell
   ollama/qwen3.5:9b  software/project
   E:\code\myapp
   type / for commands
-  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  / menu  ·  shift+tab mode  ·  ctrl+t domain  ·  ctrl+y yolo  ·  ctrl+v image  ·  ctrl+c stop
-
-   build  plan  loop  ask  │ software/project · balanced: solid, tested code for your own or a team project
- BUILD  software/project  qwen3.5:9b ▸ _
+────────────────────────────────────────────────────────────────────────────
+   build  plan  loop  ask  │ software/project │ qwen3.5:9b · balanced: solid, tested code…
+▸ ask anything · / for commands
+  / menu • shift+tab mode • ctrl+t domain • ctrl+y yolo • ctrl+c stop • ctrl+v image
 ```
 
-**The status line** (above the prompt) shows every mode with the current one
-highlighted, then the domain/flavor and a one-line description of what it will
-do. When you press Shift+Tab or Ctrl+T it is redrawn **in place** — it doesn't
-add a new line per key press.
-
-**The prompt** reads left to right:
+**The status line** (above the input) reads left to right:
 
 | Part | Meaning |
 |---|---|
-| `▣ 2 img` | images attached to your next message (only when there are some) |
-| ` ⚡YOLO ` | tools run without asking (only while YOLO is on) |
-| ` BUILD ` | the mode, colour-coded: build lime, plan cyan, loop amber, ask magenta |
+| ` build  plan  loop  ask ` | every mode, the current one highlighted: build lime, plan cyan, loop amber, ask magenta |
 | `software/project` | the domain/flavor, colour-coded per domain |
 | `qwen3.5:9b` | the active model |
+| ` ⚡ YOLO ` | tools run without asking (only while YOLO is on) |
+| `▣ 2 img` | images attached to your next message (only when there are some) |
+| `· balanced: …` | what the current mode / flavor will do |
+
+It is part of the live screen, so Shift+Tab and Ctrl+T simply change it in
+place. The line under the input lists the main shortcuts; it is replaced by a
+hint when there is something to tell you (e.g. "press ctrl+c again to exit").
+
+Everything ASG prints — your messages, replies, tool calls — goes into the
+normal terminal scrollback, so you can scroll up, search and copy as usual.
 
 ## Typing
 
 | You do | What happens |
 |---|---|
 | type and press **Enter** | sends the message |
-| end a line with `\` | continues on the next line (multi-line message) |
+| **Ctrl+J** / **Alt+Enter**, or end a line with `\` | adds a new line (multi-line message) |
 | paste multi-line text | arrives as one message |
-| type `/` on an empty prompt | opens the command menu |
-| **Tab** after `/mo` | completes the command (`/mode`, `/model`, …) |
+| **↑ / ↓** | recall earlier inputs |
+| type `/` | opens the command menu |
 | `@shot.png` or drag a file in | attaches that image |
 | **Ctrl+V** | attaches the image on the clipboard |
 | **Ctrl+C** while ASG works | stops the current turn (a loop pauses and can be resumed) |
-| **Ctrl+C** twice at the prompt | quits (so does `/exit`) |
+| **Ctrl+C** with text typed | clears the input |
+| **Ctrl+C** twice at an empty prompt | quits (so do **Ctrl+D**, `/exit`) |
 
 Typos are forgiven: `//model` works like `/model`, and a bare `clear`, `exit`,
 `quit` or `help` runs the command.
 
 ## The command menu
 
-Press `/` on an empty prompt:
+Type `/` and the menu opens under the input, filtered as you type:
 
 ```
- BUILD  software/project  qwen3.5:9b ▸ /mo
-  ▸ /mode      pick how ASG works (or press shift+tab to cycle)
-    /model     pick a model from a menu, or set one by name
+▸ /mo
+  ▸ /model     pick a model from a menu, or set one by name
+    /mode      pick how ASG works (or press shift+tab to cycle)
     /models    list models available from the active provider
-    ↑↓ move · type to filter · enter select · esc cancel
+    ↑↓ move · tab complete · enter run · esc close  1/10
 ```
 
-- type to filter, **↑ / ↓** (or Ctrl+P / Ctrl+N) to move, **Enter** to run,
-  **Esc** to close
+- **↑ / ↓** (or Ctrl+P / Ctrl+N) to move, **Tab** to complete, **Enter** to run,
+  **Esc** to close; an exact match (`/mode`) always comes first
 - commands that need an argument (like `/image <path>`) are inserted for you to
-  finish; typing a space keeps writing by hand
+  finish; typing a space closes the menu so you can write arguments by hand
 - installed skills appear in the same menu
+
+## Pickers and questions
+
+`/model`, `/provider`, `/mode`, `/domain`, `/memory` and `/permissions` open a
+picker: **↑ / ↓** to move, **Enter** to choose, **/** to filter long lists, **Esc**
+to close without changing anything. The permission **GATE** and ASG's questions
+use the same kind of form; the gate also takes a single key — **y** run,
+**a** always here, **g** always everywhere, **n** block, **ctrl+y** YOLO.
 
 ## While ASG works
 
