@@ -181,7 +181,10 @@ Everything lives in `~/.asg/config.json` (move it with `ASG_HOME`), and the dash
 }
 ```
 
-`num_ctx` defaults to 16384 because Ollama's own default quietly cuts off long prompts.
+There is no limit on how many tools the model uses in one turn; it keeps going until it's done or you press Ctrl+C. Set `"max_tool_rounds": N` only if you want a cap. If a model rejects tool definitions, ASG switches to chat-only mode for it automatically.
+
+`num_ctx` is the Ollama context window: unset means 16384, because Ollama's own default quietly cuts off long prompts, and a negative value leaves Ollama's default. Lower it if a model no longer fits in VRAM; raise it for long files.
+
 `NO_COLOR=1`, `ASG_NO_ANIMATION=1` and `ASG_DEBUG=asg.log` do what they say. More in
 [docs/cli-and-config.md](docs/cli-and-config.md).
 

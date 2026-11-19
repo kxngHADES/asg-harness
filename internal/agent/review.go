@@ -82,7 +82,10 @@ func (s *Session) selfReview(ctx context.Context, mode Mode, preamble, answer st
 	}
 	base := len(s.History)
 	lenses := s.Track.Lenses(cfg.MaxPasses)
-	rounds := max(s.app.Config.Get().MaxToolRounds/2, 4)
+	rounds := 0 // no limit, like the turn it reviews
+	if n := s.app.Config.Get().MaxToolRounds; n > 0 {
+		rounds = max(n/2, 4)
+	}
 	lastOK := true
 	for i := 0; i < cfg.MaxPasses; i++ {
 		if i >= cfg.Passes && lastOK {

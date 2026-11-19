@@ -83,12 +83,14 @@ type Config struct {
 	Providers      map[string]*ProviderConfig `json:"providers"`
 	SystemPrompt   string                     `json:"system_prompt,omitempty"`
 	AutoApprove    bool                       `json:"auto_approve"`
-	MaxToolRounds  int                        `json:"max_tool_rounds"`
-	DashboardPort  int                        `json:"dashboard_port"`
-	Temperature    *float64                   `json:"temperature,omitempty"`
-	Audio          AudioConfig                `json:"audio"`
-	Loop           LoopConfig                 `json:"loop"`
-	Review         ReviewConfig               `json:"review"`
+	// MaxToolRounds caps tool rounds in one chat turn; 0 means no limit
+	// (the default): the model uses tools until it is done or you press Ctrl+C.
+	MaxToolRounds int          `json:"max_tool_rounds,omitempty"`
+	DashboardPort int          `json:"dashboard_port"`
+	Temperature   *float64     `json:"temperature,omitempty"`
+	Audio         AudioConfig  `json:"audio"`
+	Loop          LoopConfig   `json:"loop"`
+	Review        ReviewConfig `json:"review"`
 	// Domain and Flavor are the default work track (e.g. software / work).
 	Domain string `json:"domain,omitempty"`
 	Flavor string `json:"flavor,omitempty"`
@@ -124,7 +126,6 @@ func Default() *Config {
 			"anthropic": {Type: "anthropic", BaseURL: "https://api.anthropic.com", Model: "claude-sonnet-5-5"},
 			"openai":    {Type: "openai", BaseURL: "https://api.openai.com/v1", Model: "gpt-5"},
 		},
-		MaxToolRounds: 25,
 		DashboardPort: 7777,
 		Audio: AudioConfig{
 			VoiceSpec: VoiceSpec{Engine: "auto"},
@@ -168,8 +169,10 @@ func (c *Config) normalize() {
 			break
 		}
 	}
-	if c.MaxToolRounds <= 0 {
-		c.MaxToolRounds = 25
+	// 25 was the old default cap, written into every saved config. Treat it
+	// as unset so existing users get unlimited tool use too.
+	if c.MaxToolRounds < 0 || c.MaxToolRounds == 25 {
+		c.MaxToolRounds = 0
 	}
 	if c.Loop.MaxIterations <= 0 {
 		c.Loop.MaxIterations = 30
