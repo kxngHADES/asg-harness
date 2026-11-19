@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/kxngHADES/asg-harness/compare/v0.1.6...v0.2.0) (2026-11-19)
+
+
+### Features
+
+* rebuild the terminal UI on the Charm libraries ([#14](https://github.com/kxngHADES/asg-harness/issues/14)) ([4e89cff](https://github.com/kxngHADES/asg-harness/commit/4e89cffecf86798483d0ac6c52445660166c6974))
+
 ## [0.1.6](https://github.com/kxngHADES/asg-harness/compare/v0.1.5...v0.1.6) (2026-11-19)
 
 
