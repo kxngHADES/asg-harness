@@ -386,3 +386,40 @@ func TestRecoveredTextToolCallRuns(t *testing.T) {
 func osWrite(dir, name, body string) error {
 	return os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644)
 }
+
+func TestToolRoundsAreUnlimitedByDefault(t *testing.T) {
+	t.Chdir(t.TempDir())
+	const calls = 60 // far past the old cap of 25
+	srv, seen := scriptedOllama(t, func(r chatReq) reply {
+		if n := r.toolResults(); n < calls {
+			return reply{tool: "glob", args: map[string]any{"pattern": fmt.Sprintf("p%d*", n)}}
+		}
+		return reply{text: "done"}
+	})
+	app := testApp(t, srv.URL)
+	if n := app.Config.Get().MaxToolRounds; n != 0 {
+		t.Fatalf("default max_tool_rounds should be 0 (no limit), got %d", n)
+	}
+	got, err := app.NewSession().Send(context.Background(), llm.Message{Content: "look around"}, &gateEvents{})
+	if err != nil || got != "done" {
+		t.Fatalf("got %q, %v after %d requests", got, err, len(*seen))
+	}
+	if len(*seen) != calls+1 {
+		t.Errorf("want %d model calls, got %d", calls+1, len(*seen))
+	}
+}
+
+func TestPositiveToolRoundCapStillApplies(t *testing.T) {
+	t.Chdir(t.TempDir())
+	srv, seen := scriptedOllama(t, func(r chatReq) reply {
+		return reply{tool: "glob", args: map[string]any{"pattern": fmt.Sprintf("p%d*", r.toolResults())}}
+	})
+	app := testApp(t, srv.URL)
+	if err := app.Config.Update(func(c *config.Config) error { c.MaxToolRounds = 3; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	got, err := app.NewSession().Send(context.Background(), llm.Message{Content: "look around"}, &gateEvents{})
+	if err != nil || got != "" || len(*seen) != 3 {
+		t.Fatalf("a cap of 3 should stop after 3 calls: got %q, %v, %d calls", got, err, len(*seen))
+	}
+}
