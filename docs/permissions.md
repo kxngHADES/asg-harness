@@ -5,16 +5,21 @@
 Before a tool changes something or reaches out, ASG stops and shows a **GATE**:
 
 ```
-  ▛▀ GATE ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-  ▌ BASH requests permission
-  ▌ go test ./...
-  ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-  [y] run  [a] always go here  [g] everywhere  [ctrl+y] yolo  [n] block ▸
+  ┃ GATE BASH requests permission
+  ┃ go test ./...
+  ┃ Allow BASH?
+  ┃ ctrl+y turns on YOLO and runs it
+  ┃ ▸ y  run it
+  ┃   a  always allow go in this project
+  ┃   g  always allow go everywhere
+  ┃   n  block
 ```
+
+Pick an answer with **↑ / ↓** and **Enter**, or press its key:
 
 | Answer | Effect |
 |---|---|
-| `y` or **Enter** | run it this once |
+| `y` (or **Enter** on *run it*) | run it this once |
 | `a` | always allow this kind of call **in this project** (remembered) |
 | `g` | always allow it **everywhere** (remembered) |
 | **Ctrl+Y** | turn YOLO on **and** run this call |

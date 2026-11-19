@@ -83,16 +83,19 @@ a credential, the scope of a test, a decision only you can make), it can
 **pause at any moment** and ask you:
 
 ```
-  ╭─  ? ASG NEEDS YOUR INPUT  ────────────────────────────────────
-  │ Which port should the dev server use? 3000 is taken by another process.
-  │   1 3001
-  │   2 8080
-  │   3 stop the other process
-  ╰────────────────────────────────────────────────
-  1–3 or type your own ▸ 2
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ? ASG NEEDS YOUR INPUT                                                   │
+  │ Which port should the dev server use? 3000 is taken by another process.  │
+  ╰──────────────────────────────────────────────────────────────────────────╯
+  ┃ Your answer
+  ┃ ▸ 3001
+  ┃   8080
+  ┃   stop the other process
+  ┃   ✎ something else…
 ```
 
-- Type a **number** to pick a suggestion, or type **your own answer**.
+- Pick a suggestion with **↑ / ↓** and **Enter**, or choose **something else…**
+  to type your own answer (a question without suggestions asks for text right away).
 - **Ctrl+C** cancels the question and stops the turn.
 - The model carries on with your answer in the same turn; nothing is restarted.
 

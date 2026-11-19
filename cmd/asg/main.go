@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/log/v2"
 	"golang.org/x/term"
 
 	"github.com/kxngHADES/asg-harness/internal/agent"
@@ -233,12 +234,12 @@ func (printEvents) AskUser(ctx context.Context, q string, choices []string) (str
 
 func (printEvents) Text(d string) { fmt.Print(d) }
 func (printEvents) ToolStart(c llm.ToolCall, s string) {
-	fmt.Fprintf(os.Stderr, "\n⏺ %s(%s)\n", c.Name, s)
+	logger.Info("tool", "name", c.Name, "args", s)
 }
 func (printEvents) ToolEnd(llm.ToolCall, string, bool) {}
-func (printEvents) Notice(m string)                    { fmt.Fprintln(os.Stderr, "!", m) }
+func (printEvents) Notice(m string)                    { logger.Warn(m) }
 func (printEvents) Approve(context.Context, llm.ToolCall, agent.Gate) agent.Decision {
-	fmt.Fprintln(os.Stderr, "! tool denied (run with -yolo to allow tools in -p mode)")
+	logger.Warn("tool denied (run with -yolo to allow tools in -p mode)")
 	return agent.Deny
 }
 func (printEvents) LoopUpdate(st *agent.LoopState, msg string) {
@@ -285,10 +286,13 @@ func oneShot(app *agent.App, prompt string, imgs []string, mode agent.Mode, veri
 	fmt.Println()
 }
 
+// logger writes diagnostics to stderr so answers on stdout stay pipeable.
+var logger = log.NewWithOptions(os.Stderr, log.Options{Prefix: "asg"})
+
 func fatal(err error) {
 	if err == nil {
 		return
 	}
-	fmt.Fprintln(os.Stderr, "asg:", err)
+	logger.Error(err)
 	os.Exit(1)
 }

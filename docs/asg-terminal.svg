@@ -1,0 +1,228 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="850" height="634" viewBox="0 0 850 634">
+<rect width="100%" height="100%" rx="10" fill="#121310"/>
+<circle cx="22" cy="20" r="6" fill="#ff5f57"/>
+<circle cx="42" cy="20" r="6" fill="#febc2e"/>
+<circle cx="62" cy="20" r="6" fill="#28c840"/>
+<text x="425" y="24" fill="#6b6b6b" font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,monospace" font-size="12" text-anchor="middle">asg</text>
+<g font-family="ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace" font-size="14" xml:space="preserve">
+<style>
+.r{opacity:0}
+@keyframes k8{0%,6.08%{opacity:0;transform:translateY(3px)}7.77%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k9{0%,23.24%{opacity:0;transform:translateY(3px)}24.93%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k10{0%,24.59%{opacity:0;transform:translateY(3px)}26.28%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k11{0%,25.68%{opacity:0;transform:translateY(3px)}27.36%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k12{0%,35.54%{opacity:0;transform:translateY(3px)}37.23%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k13{0%,36.62%{opacity:0;transform:translateY(3px)}38.31%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k14{0%,37.70%{opacity:0;transform:translateY(3px)}39.39%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k15{0%,38.78%{opacity:0;transform:translateY(3px)}40.47%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k16{0%,45.95%{opacity:0;transform:translateY(3px)}47.64%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k17{0%,47.03%{opacity:0;transform:translateY(3px)}48.72%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k18{0%,48.11%{opacity:0;transform:translateY(3px)}49.80%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k19{0%,49.19%{opacity:0;transform:translateY(3px)}50.88%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k20{0%,50.27%{opacity:0;transform:translateY(3px)}51.96%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k21{0%,51.35%{opacity:0;transform:translateY(3px)}53.04%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k22{0%,52.43%{opacity:0;transform:translateY(3px)}54.12%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k23{0%,53.51%{opacity:0;transform:translateY(3px)}55.20%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k24{0%,57.30%{opacity:0;transform:translateY(3px)}58.99%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes k25{0%,58.38%{opacity:0;transform:translateY(3px)}60.07%,96%{opacity:1;transform:none}99%,100%{opacity:0}}
+@keyframes ty{0%,8.11%{transform:translateX(0);animation-timing-function:steps(22,end)}18.51%,100%{transform:translateX(193.2px)}}
+@keyframes cu{0%,6.08%{opacity:0}6.09%,21.89%{opacity:1}21.90%,100%{opacity:0}}
+@keyframes bl{0%,49%{opacity:1}50%,100%{opacity:0}}
+</style>
+<g><rect x="47.2" y="55.5" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="55.6" y="55.5" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="64.0" y="46.0" width="8.7" height="19.3" fill="#e9ff9c"/><rect x="64.0" y="46.0" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="72.4" y="46.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="72.4" y="46.0" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="80.8" y="46.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="80.8" y="46.0" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="89.2" y="46.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="89.2" y="46.0" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="97.6" y="46.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="97.6" y="46.0" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="106.0" y="55.5" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="114.4" y="55.5" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="122.8" y="46.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="122.8" y="46.0" width="8.7" height="9.8" fill="#ffffff"/>
+<rect x="131.2" y="46.0" width="8.7" height="9.8" fill="#ffffff"/>
+<rect x="148.0" y="46.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="148.0" y="46.0" width="8.7" height="9.8" fill="#ffffff"/>
+<rect x="156.4" y="46.0" width="8.7" height="9.8" fill="#ffffff"/>
+<rect x="173.2" y="55.5" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="190.0" y="55.5" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="223.6" y="46.0" width="8.7" height="19.0" fill="#afff00"/><rect x="232.0" y="46.0" width="25.5" height="19.0" fill="#afff00"/><text x="232.0" y="60.1" fill="#000000" textLength="25.2" lengthAdjust="spacingAndGlyphs" font-weight="bold">ASG</text>
+<rect x="257.2" y="46.0" width="8.7" height="19.0" fill="#afff00"/><text x="274.0" y="60.1" fill="#d4d4d4" textLength="92.4" lengthAdjust="spacingAndGlyphs" font-weight="bold">agent shell</text>
+</g>
+<g><rect x="38.8" y="65.0" width="8.7" height="19.3" fill="#e9ff9c"/><rect x="38.8" y="65.0" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="47.2" y="65.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="47.2" y="65.0" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="55.6" y="65.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="55.6" y="65.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="64.0" y="65.0" width="8.7" height="19.3" fill="#4a6608"/><rect x="64.0" y="65.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="72.4" y="65.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="72.4" y="65.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="80.8" y="65.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="80.8" y="65.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="89.2" y="65.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="89.2" y="65.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="97.6" y="65.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="97.6" y="65.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="106.0" y="65.0" width="8.7" height="19.3" fill="#4a6608"/><rect x="106.0" y="65.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="114.4" y="65.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="114.4" y="65.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="122.8" y="65.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="122.8" y="65.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="131.2" y="65.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="131.2" y="65.0" width="8.7" height="9.8" fill="#d44f2c"/>
+<rect x="156.4" y="65.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="156.4" y="65.0" width="8.7" height="9.8" fill="#d44f2c"/>
+<rect x="173.2" y="65.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="181.6" y="65.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="181.6" y="65.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="190.0" y="65.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<text x="223.6" y="79.1" fill="#8a8a8a" textLength="58.8" lengthAdjust="spacingAndGlyphs">ollama/</text>
+<text x="282.4" y="79.1" fill="#afff00" textLength="84.0" lengthAdjust="spacingAndGlyphs">qwen3.5:9b</text>
+<text x="383.2" y="79.1" fill="#afff00" textLength="134.4" lengthAdjust="spacingAndGlyphs" font-weight="bold">software/project</text>
+</g>
+<g><rect x="38.8" y="84.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="38.8" y="84.0" width="8.7" height="9.8" fill="#e9ff9c"/>
+<rect x="47.2" y="84.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="47.2" y="84.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="55.6" y="84.0" width="8.7" height="19.3" fill="#4a6608"/><rect x="55.6" y="84.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="64.0" y="84.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="64.0" y="84.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="72.4" y="84.0" width="8.7" height="19.3" fill="#4a6608"/><rect x="72.4" y="84.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="80.8" y="84.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="80.8" y="84.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="89.2" y="84.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="89.2" y="84.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="97.6" y="84.0" width="8.7" height="19.3" fill="#4a6608"/><rect x="97.6" y="84.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="106.0" y="84.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="106.0" y="84.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="114.4" y="84.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="114.4" y="84.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="122.8" y="84.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="122.8" y="84.0" width="8.7" height="9.8" fill="#7fa814"/>
+<rect x="131.2" y="84.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="131.2" y="84.0" width="8.7" height="9.8" fill="#d44f2c"/>
+<rect x="139.6" y="93.5" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="148.0" y="93.5" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="156.4" y="84.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="156.4" y="84.0" width="8.7" height="9.8" fill="#d44f2c"/>
+<rect x="164.8" y="93.5" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="181.6" y="84.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="181.6" y="84.0" width="8.7" height="9.8" fill="#d44f2c"/>
+<text x="223.6" y="98.1" fill="#8a8a8a" textLength="151.2" lengthAdjust="spacingAndGlyphs">~/code/asg-harness</text>
+</g>
+<g><rect x="38.8" y="103.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="38.8" y="103.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="47.2" y="103.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="47.2" y="103.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="55.6" y="103.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="55.6" y="103.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="64.0" y="103.0" width="8.7" height="19.3" fill="#4a6608"/><rect x="64.0" y="103.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="72.4" y="103.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="72.4" y="103.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="80.8" y="103.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="80.8" y="103.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="89.2" y="103.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="89.2" y="103.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="97.6" y="103.0" width="8.7" height="19.3" fill="#bde82c"/><rect x="97.6" y="103.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="106.0" y="103.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="106.0" y="103.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="114.4" y="103.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="114.4" y="103.0" width="8.7" height="9.8" fill="#7fa814"/>
+<rect x="122.8" y="103.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="122.8" y="103.0" width="8.7" height="9.8" fill="#7fa814"/>
+<rect x="131.2" y="103.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="131.2" y="103.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="139.6" y="103.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="139.6" y="103.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="148.0" y="103.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="148.0" y="103.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="156.4" y="103.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="156.4" y="103.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="164.8" y="103.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="164.8" y="103.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="173.2" y="103.0" width="8.7" height="19.3" fill="#ff7d52"/><rect x="173.2" y="103.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<text x="223.6" y="117.1" fill="#d4d4d4" textLength="33.6" lengthAdjust="spacingAndGlyphs">type</text>
+<text x="265.6" y="117.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">/</text>
+<text x="282.4" y="117.1" fill="#d4d4d4" textLength="100.8" lengthAdjust="spacingAndGlyphs">for commands</text>
+</g>
+<g><rect x="47.2" y="122.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="55.6" y="122.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="55.6" y="122.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="64.0" y="122.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="64.0" y="122.0" width="8.7" height="9.8" fill="#bde82c"/>
+<rect x="72.4" y="122.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="72.4" y="122.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="80.8" y="122.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="80.8" y="122.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="89.2" y="122.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="89.2" y="122.0" width="8.7" height="9.8" fill="#4a6608"/>
+<rect x="97.6" y="122.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="97.6" y="122.0" width="8.7" height="9.8" fill="#7fa814"/>
+<rect x="106.0" y="122.0" width="8.7" height="19.3" fill="#7fa814"/><rect x="106.0" y="122.0" width="8.7" height="9.8" fill="#7fa814"/>
+<rect x="114.4" y="122.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="114.4" y="122.0" width="8.7" height="9.8" fill="#7fa814"/>
+<rect x="122.8" y="122.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="122.8" y="122.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="131.2" y="122.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="131.2" y="122.0" width="8.7" height="9.8" fill="#ffa8b8"/>
+<rect x="139.6" y="122.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="139.6" y="122.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="148.0" y="122.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="148.0" y="122.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="156.4" y="122.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="156.4" y="122.0" width="8.7" height="9.8" fill="#ff7d52"/>
+<rect x="164.8" y="122.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="164.8" y="122.0" width="8.7" height="9.8" fill="#ffa8b8"/>
+<rect x="173.2" y="122.0" width="8.7" height="9.8" fill="#ff7d52"/>
+</g>
+<g><rect x="106.0" y="150.5" width="8.7" height="9.8" fill="#d44f2c"/>
+<rect x="114.4" y="141.0" width="8.7" height="9.8" fill="#d44f2c"/>
+<rect x="131.2" y="141.0" width="8.7" height="9.8" fill="#d44f2c"/>
+<rect x="139.6" y="150.5" width="8.7" height="9.8" fill="#d44f2c"/>
+<rect x="156.4" y="141.0" width="8.7" height="9.8" fill="#d44f2c"/>
+<rect x="173.2" y="141.0" width="8.7" height="19.3" fill="#d44f2c"/><rect x="173.2" y="141.0" width="8.7" height="9.8" fill="#d44f2c"/>
+</g>
+<g></g>
+<g></g>
+<g class="r" style="animation:k8 14.80s linear infinite"><text x="22.0" y="212.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs" font-weight="bold">▸</text>
+<text x="38.8" y="212.1" fill="#d4d4d4" textLength="184.8" lengthAdjust="spacingAndGlyphs">what changed recently?</text>
+</g>
+<g class="r" style="animation:k9 14.80s linear infinite"></g>
+<g class="r" style="animation:k10 14.80s linear infinite"><text x="38.8" y="250.1" fill="#ffaf00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+<text x="55.6" y="250.1" fill="#ffaf00" textLength="33.6" lengthAdjust="spacingAndGlyphs" font-weight="bold">GATE</text>
+<text x="97.6" y="250.1" fill="#d4d4d4" textLength="33.6" lengthAdjust="spacingAndGlyphs" font-weight="bold">BASH</text>
+<text x="139.6" y="250.1" fill="#d4d4d4" textLength="159.6" lengthAdjust="spacingAndGlyphs">requests permission</text>
+</g>
+<g class="r" style="animation:k11 14.80s linear infinite"><text x="38.8" y="269.1" fill="#ffaf00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+<text x="55.6" y="269.1" fill="#d4d4d4" textLength="168.0" lengthAdjust="spacingAndGlyphs">git log --oneline -3</text>
+</g>
+<g class="r" style="animation:k12 14.80s linear infinite"><text x="38.8" y="288.1" fill="#00d7ff" textLength="50.4" lengthAdjust="spacingAndGlyphs" font-weight="bold">◆ BASH</text>
+<text x="97.6" y="288.1" fill="#8a8a8a" textLength="168.0" lengthAdjust="spacingAndGlyphs">git log --oneline -3</text>
+</g>
+<g class="r" style="animation:k13 14.80s linear infinite"><text x="38.8" y="307.1" fill="#8a8a8a" textLength="646.8" lengthAdjust="spacingAndGlyphs">┊ 18aa978 feat: rebuild the terminal UI on Bubble Tea and the Charm libraries</text>
+</g>
+<g class="r" style="animation:k14 14.80s linear infinite"><text x="38.8" y="326.1" fill="#8a8a8a" textLength="672.0" lengthAdjust="spacingAndGlyphs">┊ d1a24f7 docs: add AGENTS.md (UI rules, Charm stack) and ASG.md (project guide)</text>
+</g>
+<g class="r" style="animation:k15 14.80s linear infinite"><text x="38.8" y="345.1" fill="#8a8a8a" textLength="537.6" lengthAdjust="spacingAndGlyphs">┊ 53c5b4d docs: add a terminal guide with command examples (#10)</text>
+</g>
+<g class="r" style="animation:k16 14.80s linear infinite"><text x="22.0" y="364.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+<text x="38.8" y="364.1" fill="#afff00" textLength="126.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">## What changed</text>
+</g>
+<g class="r" style="animation:k17 14.80s linear infinite"><text x="22.0" y="383.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+</g>
+<g class="r" style="animation:k18 14.80s linear infinite"><text x="22.0" y="402.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+<text x="38.8" y="402.1" fill="#d0d0d0" textLength="134.4" lengthAdjust="spacingAndGlyphs">The last commits</text>
+<text x="181.6" y="402.1" fill="#d0d0d0" textLength="193.2" lengthAdjust="spacingAndGlyphs" font-weight="bold">rebuilt the terminal UI</text>
+<text x="383.2" y="402.1" fill="#d0d0d0" textLength="159.6" lengthAdjust="spacingAndGlyphs">on the Charm stack:</text>
+</g>
+<g class="r" style="animation:k19 14.80s linear infinite"><text x="22.0" y="421.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+</g>
+<g class="r" style="animation:k20 14.80s linear infinite"><text x="22.0" y="440.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+<text x="38.8" y="440.1" fill="#d0d0d0" textLength="8.4" lengthAdjust="spacingAndGlyphs">▪</text>
+<text x="55.6" y="440.1" fill="#00d7ff" textLength="42.0" lengthAdjust="spacingAndGlyphs">feat:</text>
+<text x="106.0" y="440.1" fill="#d0d0d0" textLength="411.6" lengthAdjust="spacingAndGlyphs">Bubble Tea program, Huh forms and Glamour replies</text>
+</g>
+<g class="r" style="animation:k21 14.80s linear infinite"><text x="22.0" y="459.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+<text x="38.8" y="459.1" fill="#d0d0d0" textLength="8.4" lengthAdjust="spacingAndGlyphs">▪</text>
+<text x="55.6" y="459.1" fill="#00d7ff" textLength="42.0" lengthAdjust="spacingAndGlyphs">docs:</text>
+<text x="106.0" y="459.1" fill="#d0d0d0" textLength="25.2" lengthAdjust="spacingAndGlyphs">new</text>
+<text x="139.6" y="459.1" fill="#00d7ff" textLength="75.6" lengthAdjust="spacingAndGlyphs">AGENTS.md</text>
+<text x="223.6" y="459.1" fill="#d0d0d0" textLength="25.2" lengthAdjust="spacingAndGlyphs">and</text>
+<text x="257.2" y="459.1" fill="#00d7ff" textLength="50.4" lengthAdjust="spacingAndGlyphs">ASG.md</text>
+<text x="316.0" y="459.1" fill="#d0d0d0" textLength="50.4" lengthAdjust="spacingAndGlyphs">guides</text>
+</g>
+<g class="r" style="animation:k22 14.80s linear infinite"><text x="22.0" y="478.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+</g>
+<g class="r" style="animation:k23 14.80s linear infinite"><text x="22.0" y="497.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">┃</text>
+<text x="38.8" y="497.1" fill="#d0d0d0" textLength="75.6" lengthAdjust="spacingAndGlyphs">Next: run</text>
+<text x="122.8" y="497.1" fill="#00d7ff" textLength="109.2" lengthAdjust="spacingAndGlyphs">go test ./...</text>
+<text x="240.4" y="497.1" fill="#d0d0d0" textLength="134.4" lengthAdjust="spacingAndGlyphs">and open the PR.</text>
+</g>
+<g class="r" style="animation:k24 14.80s linear infinite"><text x="38.8" y="516.1" fill="#8a8a8a" textLength="226.8" lengthAdjust="spacingAndGlyphs">── 2.2s · 42↑ 17↓ tokens ──</text>
+</g>
+<g class="r" style="animation:k25 14.80s linear infinite"><text x="38.8" y="535.1" fill="#8a8a8a" textLength="100.8" lengthAdjust="spacingAndGlyphs">work folder:</text>
+<text x="148.0" y="535.1" fill="#afff00" textLength="361.2" lengthAdjust="spacingAndGlyphs">.asg/work/2026-11-19-what-changed-recently/</text>
+<text x="517.6" y="535.1" fill="#8a8a8a" textLength="302.4" lengthAdjust="spacingAndGlyphs">(plan · checklist · walkthrough · a…</text>
+</g>
+<g><text x="22.0" y="554.1" fill="#3a3a3a" textLength="806.4" lengthAdjust="spacingAndGlyphs">────────────────────────────────────────────────────────────────────────────────────────────────</text>
+</g>
+<g><rect x="38.8" y="559.0" width="8.7" height="19.0" fill="#afff00"/><rect x="47.2" y="559.0" width="42.3" height="19.0" fill="#afff00"/><text x="47.2" y="573.1" fill="#000000" textLength="42.0" lengthAdjust="spacingAndGlyphs" font-weight="bold">build</text>
+<rect x="89.2" y="559.0" width="8.7" height="19.0" fill="#afff00"/><text x="106.0" y="573.1" fill="#8a8a8a" textLength="151.2" lengthAdjust="spacingAndGlyphs">plan  loop  ask  │</text>
+<text x="265.6" y="573.1" fill="#afff00" textLength="134.4" lengthAdjust="spacingAndGlyphs" font-weight="bold">software/project</text>
+<text x="408.4" y="573.1" fill="#8a8a8a" textLength="411.6" lengthAdjust="spacingAndGlyphs">│ qwen3.5:9b · balanced: solid, tested code for …</text>
+</g>
+<g><text x="22.0" y="592.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs" font-weight="bold">▸</text>
+<text x="38.8" y="592.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">a</text>
+<text x="47.2" y="592.1" fill="#8a8a8a" textLength="235.2" lengthAdjust="spacingAndGlyphs">sk anything · / for commands</text>
+</g>
+<g><text x="38.8" y="611.1" fill="#afff00" textLength="8.4" lengthAdjust="spacingAndGlyphs">/</text>
+<text x="55.6" y="611.1" fill="#8a8a8a" textLength="33.6" lengthAdjust="spacingAndGlyphs">menu</text>
+<text x="97.6" y="611.1" fill="#3a3a3a" textLength="8.4" lengthAdjust="spacingAndGlyphs">•</text>
+<text x="114.4" y="611.1" fill="#afff00" textLength="75.6" lengthAdjust="spacingAndGlyphs">shift+tab</text>
+<text x="198.4" y="611.1" fill="#8a8a8a" textLength="33.6" lengthAdjust="spacingAndGlyphs">mode</text>
+<text x="240.4" y="611.1" fill="#3a3a3a" textLength="8.4" lengthAdjust="spacingAndGlyphs">•</text>
+<text x="257.2" y="611.1" fill="#afff00" textLength="50.4" lengthAdjust="spacingAndGlyphs">ctrl+t</text>
+<text x="316.0" y="611.1" fill="#8a8a8a" textLength="50.4" lengthAdjust="spacingAndGlyphs">domain</text>
+<text x="374.8" y="611.1" fill="#3a3a3a" textLength="8.4" lengthAdjust="spacingAndGlyphs">•</text>
+<text x="391.6" y="611.1" fill="#afff00" textLength="50.4" lengthAdjust="spacingAndGlyphs">ctrl+y</text>
+<text x="450.4" y="611.1" fill="#8a8a8a" textLength="33.6" lengthAdjust="spacingAndGlyphs">yolo</text>
+<text x="492.4" y="611.1" fill="#3a3a3a" textLength="8.4" lengthAdjust="spacingAndGlyphs">•</text>
+<text x="509.2" y="611.1" fill="#afff00" textLength="50.4" lengthAdjust="spacingAndGlyphs">ctrl+c</text>
+<text x="568.0" y="611.1" fill="#8a8a8a" textLength="33.6" lengthAdjust="spacingAndGlyphs">stop</text>
+<text x="610.0" y="611.1" fill="#3a3a3a" textLength="8.4" lengthAdjust="spacingAndGlyphs">•</text>
+<text x="626.8" y="611.1" fill="#afff00" textLength="50.4" lengthAdjust="spacingAndGlyphs">ctrl+v</text>
+<text x="685.6" y="611.1" fill="#8a8a8a" textLength="42.0" lengthAdjust="spacingAndGlyphs">image</text>
+<text x="736.0" y="611.1" fill="#3a3a3a" textLength="8.4" lengthAdjust="spacingAndGlyphs">…</text>
+</g>
+<g style="animation:ty 14.80s linear infinite"><rect x="38.8" y="198.0" width="201.6" height="19.0" fill="#121310"/><g style="animation:cu 14.80s linear infinite"><rect x="38.8" y="200.0" width="8.4" height="15.0" fill="#AFFF00" style="animation:bl 1s steps(1) infinite"/></g></g>
+</g>
+</svg>

@@ -1,4 +1,6 @@
-// Package tui is the interactive terminal front end.
+// Package tui is the interactive terminal front end, built on Bubble Tea,
+// Bubbles, Lip Gloss, Huh, Glamour and Harmonica. Read AGENTS.md before
+// changing it.
 package tui
 
 import (
@@ -6,14 +8,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/signal"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+	"charm.land/huh/v2"
 	"golang.org/x/term"
 
 	"github.com/kxngHADES/asg-harness/internal/agent"
@@ -24,45 +27,33 @@ import (
 	itools "github.com/kxngHADES/asg-harness/internal/tools"
 )
 
-const keyCtrlV = 22
-
 type attachment struct {
 	name string
 	img  llm.Image
 }
 
 type REPL struct {
-	app     *agent.App
-	sess    *agent.Session
-	t       *term.Terminal
-	in      *inputQueue
-	out     io.Writer // where menus draw
-	fd      int
-	menuOn  bool // '/' on an empty main prompt opens the command menu
-	gating  bool // a permission gate is waiting for an answer
-	pending []attachment
-	// stripShown is set while the status strip is the line right above
-	// the prompt, so the next mode / track change can redraw it in place.
-	stripShown bool
+	app  *agent.App
+	sess *agent.Session
+	prog *tea.Program
+	out  *outbox
+
+	// stateMu guards sess.Mode and sess.Track, which the view reads while
+	// the worker may change them.
+	stateMu sync.RWMutex
 
 	mu        sync.Mutex
 	cancel    context.CancelFunc
+	pending   []attachment
 	lastReply string
-	lastEOF   time.Time
 
-	md   *mdStream
-	spin *spinner
+	spinID atomic.Int64
+	md     *mdStream // worker only
+	spin   *spinner  // worker only
 }
 
 func New(app *agent.App) *REPL {
-	r := &REPL{app: app, sess: app.NewSession(), fd: int(os.Stdin.Fd()), in: &inputQueue{r: os.Stdin}, out: os.Stdout}
-	rw := struct {
-		io.Reader
-		io.Writer
-	}{r.in, os.Stdout}
-	r.t = term.NewTerminal(rw, "")
-	r.t.AutoCompleteCallback = r.onKey
-	return r
+	return &REPL{app: app, sess: app.NewSession()}
 }
 
 type command struct {
@@ -110,61 +101,133 @@ var commands = []command{
 	{"/exit", "", "quit"},
 }
 
+// --- output -------------------------------------------------------------
+
+// post hands a message to the program from any goroutine without blocking.
+func (r *REPL) post(msg tea.Msg) {
+	if r.out != nil {
+		r.out.post(msg)
+	}
+}
+
+// println prints s into the scrollback above the live area.
+func (r *REPL) println(s string) { r.post(tea.Println(s)()) }
+
+// printf prints formatted text into the scrollback. One trailing newline is
+// implied, as with the old line-based output.
 func (r *REPL) printf(format string, a ...any) {
-	fmt.Printf(format, a...)
-	r.stripShown = false // the strip is no longer right above the prompt
+	r.println(strings.TrimSuffix(fmt.Sprintf(format, a...), "\n"))
 }
 
-func (r *REPL) banner() {
-	cfg := r.app.Config.Get()
-	name, pc := cfg.Active()
-	model := ""
-	if pc != nil {
-		model = pc.Model
-	}
-	cwd, _ := os.Getwd()
-	project := ""
-	if _, err := os.Stat("ASG.md"); err != nil {
-		project = slate + " · no ASG.md, try " + lime + "/init" + reset
-	}
-	fmt.Println()
-	t := r.track()
-	petBanner(os.Stdout, []string{
-		onLime + " ASG " + reset + " " + bold + "agent shell" + reset,
-		slate + name + reset + "/" + lime + model + reset + "  " + domainColor(t.Domain) + t.String() + reset,
-		slate + oneLine(cwd, 40) + reset + project,
-		"type " + lime + "/" + reset + " for commands",
-	})
-	r.printf("  %s%s%s\n", slate, strings.Repeat("━", min(termWidth()-4, 60)), reset)
-	keys := [][2]string{{"/", "menu"}, {"shift+tab", "mode"}, {"ctrl+t", "domain"}, {"ctrl+y", "yolo"}, {"ctrl+v", "image"}, {"ctrl+c", "stop"}}
-	var parts []string
-	for _, k := range keys {
-		parts = append(parts, lime+k[0]+reset+" "+k[1])
-	}
-	r.printf("  %s\n\n", strings.Join(parts, slate+"  ·  "+reset))
-	r.printStrip()
+// spinner is the working animation for one stretch of waiting.
+type spinner struct {
+	r    *REPL
+	id   int64
+	once sync.Once
 }
 
-// printStrip prints the status strip outside the line editor; the next
-// Shift+Tab / Ctrl+T at the prompt redraws it in place.
-func (r *REPL) printStrip() {
-	r.printf("%s\n", r.statusStrip())
-	r.stripShown = true
+func (r *REPL) startSpinner(label string) *spinner {
+	s := &spinner{r: r, id: r.spinID.Add(1)}
+	r.post(busyMsg{id: s.id, label: label})
+	return s
 }
 
-const keyCtrlY = 25
-
-// modeColor gives each mode a colour of its own in the prompt badge.
-func modeColor(m agent.Mode) string {
-	switch m {
-	case agent.ModePlan:
-		return cyan
-	case agent.ModeAsk:
-		return magenta
-	case agent.ModeLoop:
-		return amber
+func (s *spinner) Stop() {
+	if s == nil {
+		return
 	}
-	return lime
+	s.once.Do(func() { s.r.post(busyMsg{id: s.id}) })
+}
+
+// --- lifecycle ----------------------------------------------------------
+
+// Run starts the interactive program and returns when the user quits.
+func (r *REPL) Run() error {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return errors.New("stdin is not a terminal; use -p for one-shot prompts")
+	}
+	detectBackground()
+	r.prog = tea.NewProgram(newModel(r))
+	r.out = newOutbox(r.prog)
+	defer r.out.close()
+	debugf("tui start")
+	_, err := r.prog.Run()
+	r.interrupt()
+	debugf("tui exit err=%v", err)
+	if errors.Is(err, tea.ErrInterrupted) {
+		return nil
+	}
+	return err
+}
+
+// interrupt stops the running turn, if any, and any speech.
+func (r *REPL) interrupt() {
+	r.mu.Lock()
+	if r.cancel != nil {
+		r.cancel()
+	}
+	r.mu.Unlock()
+	r.app.Speaker.Stop()
+}
+
+func (r *REPL) addPending(a attachment) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.pending = append(r.pending, a)
+	return len(r.pending)
+}
+
+func (r *REPL) pendingCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.pending)
+}
+
+func (r *REPL) hasPending() bool { return r.pendingCount() > 0 }
+
+func (r *REPL) takePending() []attachment {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p := r.pending
+	r.pending = nil
+	return p
+}
+
+// handle runs one submitted input on the worker goroutine and reports
+// whether the user asked to quit.
+func (r *REPL) handle(line string) (quit bool) {
+	defer func() {
+		if p := recover(); p != nil {
+			debugf("panic handling %q: %v", line, p)
+			r.printf("  %s", red(fmt.Sprintf("✕ internal error: %v", p)))
+		}
+	}()
+	line = strings.TrimSpace(line)
+	if line == "" && !r.hasPending() {
+		return false
+	}
+	line = normalizeCommand(line)
+	debugf("input %q", oneLine(line, 80))
+	if strings.HasPrefix(line, "/") && !media.IsImagePath(strings.Fields(line)[0]) {
+		return r.command(line)
+	}
+	r.send(line)
+	return false
+}
+
+// bareCommands are words that, typed alone, almost certainly mean the
+// command rather than a message to the model.
+var bareCommands = map[string]bool{"clear": true, "exit": true, "quit": true, "help": true}
+
+// normalizeCommand forgives "//model" typos and bare "clear"/"exit"/….
+func normalizeCommand(line string) string {
+	if strings.HasPrefix(line, "//") && !strings.HasPrefix(line, "///") {
+		return line[1:]
+	}
+	if bareCommands[strings.ToLower(line)] {
+		return "/" + strings.ToLower(line)
+	}
+	return line
 }
 
 // yolo reports whether tool calls currently run without asking.
@@ -186,211 +249,9 @@ func (r *REPL) toggleYolo() bool {
 
 func (r *REPL) yoloLine(on bool) string {
 	if on {
-		return fmt.Sprintf("  %s%s⚡ YOLO ON %s %stools run without asking until you press ctrl+y again%s\n", bold, onAmber, reset, amber, reset)
+		return "  " + badge(colAmber, "⚡ YOLO ON") + " " + amber("tools run without asking until you press ctrl+y again")
 	}
-	return fmt.Sprintf("  %sYOLO off — tool calls ask first%s\n", slate, reset)
-}
-
-func (r *REPL) setMode(m agent.Mode) {
-	r.sess.Mode = m
-}
-
-// SetMode picks the mode the session starts in (the -mode flag).
-func (r *REPL) SetMode(m agent.Mode) { r.setMode(m) }
-
-func (r *REPL) mode() agent.Mode {
-	if r.sess == nil || r.sess.Mode == "" {
-		return agent.ModeBuild
-	}
-	return r.sess.Mode
-}
-
-// Run starts the read-eval-print loop.
-func (r *REPL) Run() error {
-	if !term.IsTerminal(r.fd) {
-		return errors.New("stdin is not a terminal; use -p for one-shot prompts")
-	}
-	r.banner()
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
-	go func() {
-		for range sig {
-			r.mu.Lock()
-			if r.cancel != nil {
-				r.cancel()
-			}
-			r.mu.Unlock()
-			r.app.Speaker.Stop()
-		}
-	}()
-	for {
-		line, err := r.readInput()
-		if err == io.EOF {
-			if time.Since(r.lastEOF) < 2*time.Second {
-				r.printf("%sbye%s\n", dim, reset)
-				return nil
-			}
-			r.lastEOF = time.Now()
-			r.printf("%s(press Ctrl+C again to exit)%s\n", dim, reset)
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		line = strings.TrimSpace(line)
-		if line == "" && len(r.pending) == 0 {
-			continue
-		}
-		line = normalizeCommand(line)
-		if strings.HasPrefix(line, "/") && !media.IsImagePath(strings.Fields(line)[0]) {
-			if quit := r.command(line); quit {
-				return nil
-			}
-			continue
-		}
-		r.send(line)
-	}
-}
-
-// bareCommands are words that, typed alone, almost certainly mean the
-// command rather than a message to the model.
-var bareCommands = map[string]bool{"clear": true, "exit": true, "quit": true, "help": true}
-
-// normalizeCommand forgives "//model" typos and bare "clear"/"exit"/….
-func normalizeCommand(line string) string {
-	if strings.HasPrefix(line, "//") && !strings.HasPrefix(line, "///") {
-		return line[1:]
-	}
-	if bareCommands[strings.ToLower(line)] {
-		return "/" + strings.ToLower(line)
-	}
-	return line
-}
-
-func (r *REPL) prompt() string {
-	model := ""
-	cfg := r.app.Config.Get()
-	if _, pc := cfg.Active(); pc != nil {
-		model = pc.Model
-	}
-	if len(model) > 22 {
-		model = model[:21] + "…"
-	}
-	// [⚡] BUILD software/work model ▸ — the mode badge has a fixed width
-	// and is always shown, so the prompt keeps its shape across changes.
-	t := r.track()
-	p := modeBadge(r.mode()) + " " + domainColor(t.Domain) + t.String() + reset + " " +
-		slate + model + reset + " " + lime + bold + "▸ " + reset
-	if r.yolo() {
-		p = onAmber + bold + " ⚡YOLO " + reset + " " + p
-	}
-	if n := len(r.pending); n > 0 {
-		p = fmt.Sprintf("%s▣ %d img%s %s", magenta, n, reset, p)
-	}
-	return p
-}
-
-// readInput reads one logical input, joining bracketed pastes and
-// backslash-continued lines.
-func (r *REPL) readInput() (string, error) {
-	old, err := term.MakeRaw(r.fd)
-	if err != nil {
-		return "", err
-	}
-	defer term.Restore(r.fd, old)
-	r.t.SetBracketedPasteMode(true)
-	defer r.t.SetBracketedPasteMode(false)
-
-	var lines []string
-	r.t.SetPrompt(r.prompt())
-	defer func() { r.menuOn = false }()
-	for {
-		r.menuOn = len(lines) == 0
-		line, err := r.t.ReadLine()
-		if err == term.ErrPasteIndicator {
-			lines = append(lines, line)
-			r.t.SetPrompt(dim + "… " + reset)
-			continue
-		}
-		if err != nil {
-			return "", err
-		}
-		if strings.HasSuffix(line, "\\") {
-			lines = append(lines, strings.TrimSuffix(line, "\\"))
-			r.t.SetPrompt(dim + "… " + reset)
-			continue
-		}
-		lines = append(lines, line)
-		return strings.Join(lines, "\n"), nil
-	}
-}
-
-// onKey handles Ctrl+V image paste and Tab completion of slash commands.
-func (r *REPL) onKey(line string, pos int, key rune) (string, int, bool) {
-	switch key {
-	case keyShiftTab:
-		if r.gating {
-			return line, pos, true
-		}
-		r.setMode(r.mode().Next())
-		r.showStrip()
-		return line, pos, true
-	case keyCtrlT:
-		if r.gating {
-			return line, pos, true
-		}
-		r.cycleDomain()
-		r.showStrip()
-		return line, pos, true
-	case keyCtrlY:
-		on := r.toggleYolo()
-		if r.gating {
-			r.printAbove(r.yoloLine(on)) // keep the gate's own prompt
-			if !on {
-				return line, pos, true
-			}
-			// At a permission gate, ctrl+y also approves the waiting call.
-			r.in.unread([]byte{'\r'})
-			return "y", 1, true
-		}
-		r.t.SetPrompt(r.prompt())
-		r.printAbove(r.yoloLine(on))
-		return line, pos, true
-	case '/':
-		if r.menuOn && line == "" {
-			return r.slashMenu()
-		}
-	case keyCtrlV:
-		img, err := media.ClipboardImage()
-		if err != nil {
-			r.printAbove(yellow + err.Error() + reset)
-			return "", 0, false
-		}
-		r.pending = append(r.pending, attachment{name: "clipboard", img: img})
-		r.t.SetPrompt(r.prompt())
-		tag := fmt.Sprintf("[Image #%d] ", len(r.pending))
-		return line[:pos] + tag + line[pos:], pos + len(tag), true
-	case '\t':
-		if !strings.HasPrefix(line, "/") || strings.Contains(line, " ") {
-			return "", 0, false
-		}
-		var matches []string
-		for _, c := range r.commandNames() {
-			if strings.HasPrefix(c, line) {
-				matches = append(matches, c)
-			}
-		}
-		if len(matches) == 0 {
-			return "", 0, false
-		}
-		if len(matches) == 1 {
-			return matches[0] + " ", len(matches[0]) + 1, true
-		}
-		r.printAbove(dim + strings.Join(matches, "  ") + reset)
-		p := commonPrefix(matches)
-		return p, len(p), true
-	}
-	return "", 0, false
+	return "  " + slate("YOLO off — tool calls ask first")
 }
 
 func (r *REPL) commandNames() []string {
@@ -405,46 +266,27 @@ func (r *REPL) commandNames() []string {
 	return names
 }
 
-func commonPrefix(ss []string) string {
-	p := ss[0]
-	for _, s := range ss[1:] {
-		for !strings.HasPrefix(s, p) {
-			p = p[:len(p)-1]
-		}
-	}
-	return p
-}
-
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
 func (r *REPL) send(text string) {
 	text, imgs, names := media.ExtractImages(text)
 	for i, img := range imgs {
-		r.pending = append(r.pending, attachment{name: names[i], img: img})
+		r.addPending(attachment{name: names[i], img: img})
 	}
 	msg := llm.Message{Content: text}
-	for _, a := range r.pending {
+	pending := r.takePending()
+	var ns []string
+	for _, a := range pending {
 		msg.Images = append(msg.Images, a.img)
+		ns = append(ns, a.name)
 	}
-	if len(r.pending) > 0 {
-		var ns []string
-		for _, a := range r.pending {
-			ns = append(ns, a.name)
-		}
-		r.printf("  %s▣ attached %s%s\n", magenta, strings.Join(ns, ", "), reset)
+	if len(ns) > 0 {
+		r.printf("  %s", magenta("▣ attached "+strings.Join(ns, ", ")))
 	}
-	r.pending = nil
 	if strings.TrimSpace(msg.Content) == "" && len(msg.Images) > 0 {
 		msg.Content = "Describe this image."
 	}
 	if r.mode() == agent.ModeLoop {
 		if len(msg.Images) > 0 {
-			r.printf("  %s! images are not passed to loop runs — describe what matters in the objective%s\n", amber, reset)
+			r.printf("  %s", amber("! images are not passed to loop runs — describe what matters in the objective"))
 		}
 		r.loop(msg.Content, agent.LoopOptions{})
 		return
@@ -455,9 +297,8 @@ func (r *REPL) send(text string) {
 // loop runs the loop harness on an objective (or resumes a saved run).
 func (r *REPL) loop(objective string, opt agent.LoopOptions) {
 	r.app.Speaker.Stop()
-	fmt.Println()
-	r.md = newMDStream()
-	r.spin = startSpinner("starting loop")
+	r.md = r.newMDStream()
+	r.spin = r.startSpinner("starting loop")
 	start := time.Now()
 	_, err := r.withCancel(func(ctx context.Context) (string, error) {
 		_, err := r.sess.RunLoop(ctx, objective, opt, r)
@@ -467,22 +308,21 @@ func (r *REPL) loop(objective string, opt agent.LoopOptions) {
 	r.md.Flush()
 	switch {
 	case errors.Is(err, context.Canceled):
-		r.printf("  %s■ loop paused%s %s— /loop resume picks up where it stopped%s\n\n", amber, reset, slate, reset)
+		r.printf("  %s %s\n", amber("■ loop paused"), slate("— /loop resume picks up where it stopped"))
 		return
 	case err != nil:
-		r.printf("  %s✕ %v%s\n\n", red, err, reset)
+		r.printf("  %s\n", red(fmt.Sprintf("✕ %v", err)))
 		return
 	}
 	u := r.sess.Usage
-	r.printf("  %s── loop %.0fs · %d↓ tokens generated ──%s\n", slate, time.Since(start).Seconds(), u.OutputTokens, reset)
+	r.printf("  %s", slate(fmt.Sprintf("── loop %.0fs · %d↓ tokens generated ──", time.Since(start).Seconds(), u.OutputTokens)))
 	r.workHint()
-	r.printf("\n")
 }
 
 // workHint points at the work folder after a turn that has one.
 func (r *REPL) workHint() {
 	if w := r.sess.Work; w.Exists() && r.mode() != agent.ModePlan && r.mode() != agent.ModeAsk {
-		r.printf("  %swork folder: %s%s/%s %s(plan · checklist · walkthrough · activity — /work)%s\n", slate, lime, w.Rel, reset, slate, reset)
+		r.println(fit("  " + slate("work folder: ") + lime(w.Rel+"/") + " " + slate("(plan · checklist · walkthrough · activity — /work)")))
 	}
 }
 
@@ -509,42 +349,30 @@ func (r *REPL) withCancel(fn func(ctx context.Context) (string, error)) (string,
 }
 
 func (r *REPL) run(msg llm.Message) {
-	ctx, cancel := context.WithCancel(context.Background())
-	r.mu.Lock()
-	r.cancel = cancel
-	r.mu.Unlock()
-	defer func() {
-		r.mu.Lock()
-		r.cancel = nil
-		r.mu.Unlock()
-		cancel()
-	}()
-
 	r.app.Speaker.Stop()
-	fmt.Println()
-	r.md = newMDStream()
-	r.spin = startSpinner("thinking")
+	r.md = r.newMDStream()
+	r.spin = r.startSpinner("thinking")
 	start := time.Now()
-	reply, err := r.sess.Send(ctx, msg, r)
+	reply, err := r.withCancel(func(ctx context.Context) (string, error) {
+		return r.sess.Send(ctx, msg, r)
+	})
 	r.spin.Stop()
 	r.md.Flush()
 	switch {
 	case errors.Is(err, context.Canceled):
-		r.printf("  %s■ stopped%s\n\n", amber, reset)
+		r.printf("  %s", amber("■ stopped"))
 		return
 	case err != nil:
-		r.printf("  %s✕ %v%s\n\n", red, err, reset)
+		r.printf("  %s", red(fmt.Sprintf("✕ %v", err)))
 		return
 	}
 	u := r.sess.Usage
-	r.printf("  %s── %.1fs · %d↑ %d↓ tokens ──%s\n", slate, time.Since(start).Seconds(), u.InputTokens, u.OutputTokens, reset)
+	r.printf("  %s", slate(fmt.Sprintf("── %.1fs · %d↑ %d↓ tokens ──", time.Since(start).Seconds(), u.InputTokens, u.OutputTokens)))
 	r.workHint()
 	if r.mode() == agent.ModePlan && r.sess.Plan != "" && reply == r.sess.Plan {
-		r.printf("  %splan saved · %s/loop%s%s runs it step by step with checks · %sshift+tab%s%s to build mode works through it with you%s\n",
-			slate, lime, reset, slate, lime, reset, slate, reset)
+		r.printf("  %s%s%s%s%s", slate("plan saved · "), lime("/loop"), slate(" runs it step by step with checks · "),
+			lime("shift+tab"), slate(" to build mode works through it with you"))
 	}
-	r.printf("\n")
-	r.printStrip()
 	r.lastReply = reply
 	if r.app.Config.Get().Audio.Enabled {
 		r.speak(reply)
@@ -555,7 +383,7 @@ func (r *REPL) speak(text string) {
 	done := r.app.Speaker.Speak(text, r.app.ResolveVoice(context.Background()))
 	go func() {
 		if err := <-done; err != nil {
-			fmt.Fprintf(r.t, "%saudio: %v%s\n", yellow, err, reset)
+			r.printf("%s", yellow(fmt.Sprintf("audio: %v", err)))
 		}
 	}()
 }
@@ -570,122 +398,124 @@ func (r *REPL) Text(delta string) {
 func (r *REPL) ToolStart(call llm.ToolCall, summary string) {
 	r.spin.Stop()
 	r.md.Flush()
-	r.printf("  %s◆ %s%s %s%s%s\n", cyan, strings.ToUpper(call.Name), reset, slate, oneLine(summary, termWidth()-len(call.Name)-8), reset)
-	r.spin = startSpinner("running " + call.Name)
+	r.printf("  %s %s", cyanBold("◆ "+strings.ToUpper(call.Name)), slate(oneLine(summary, termWidth()-len(call.Name)-8)))
+	r.spin = r.startSpinner("running " + call.Name)
 }
 
 func (r *REPL) ToolEnd(call llm.ToolCall, result string, isErr bool) {
 	r.spin.Stop()
-	color, mark := slate, "┊"
+	paint, mark := slate, "┊"
 	if isErr {
-		color, mark = red, "✕"
+		paint, mark = red, "✕"
 	}
+	var lines []string
 	for _, l := range strings.Split(preview(result, 4), "\n") {
-		r.printf("  %s%s %s%s\n", color, mark, l, reset)
+		lines = append(lines, "  "+paint(mark+" "+l))
 	}
-	r.md = newMDStream()
-	r.spin = startSpinner("thinking")
+	r.println(strings.Join(lines, "\n"))
+	r.md = r.newMDStream()
+	r.spin = r.startSpinner("thinking")
 }
 
 func (r *REPL) Notice(msg string) {
 	r.spin.Stop()
 	r.md.Flush()
-	r.printf("  %s! %s%s\n", amber, msg, reset)
+	r.printf("  %s", amber("! "+msg))
 }
 
 // LoopUpdate draws loop harness progress (agent.LoopEvents).
 func (r *REPL) LoopUpdate(st *agent.LoopState, msg string) {
 	r.spin.Stop()
 	r.md.Flush()
-	color := amber
+	paint := amber
 	switch {
 	case strings.HasPrefix(msg, "✓"):
-		color = green
+		paint = green
 	case strings.HasPrefix(msg, "✗"):
-		color = red
+		paint = red
 	}
+	pre := ""
 	if strings.HasPrefix(msg, "step ") {
-		r.printf("\n")
+		pre = "\n"
 	}
-	r.printf("  %s%s⟳ LOOP %s %s%s%s\n", bold, onAmber, reset, color, msg, reset)
+	r.printf("%s  %s %s", pre, badge(colAmber, "⟳ LOOP"), paint(msg))
 	if strings.HasPrefix(msg, "plan ready") || strings.HasPrefix(msg, "split ") || st.Status != agent.LoopRunning {
 		r.printChecklist(st)
 	}
-	r.md = newMDStream()
-	r.spin = startSpinner("working")
+	r.md = r.newMDStream()
+	r.spin = r.startSpinner("working")
 }
 
 func (r *REPL) printChecklist(st *agent.LoopState) {
+	var out []string
 	for _, l := range strings.Split(strings.TrimRight(st.Checklist(), "\n"), "\n") {
-		c := slate
+		paint := slate
 		switch {
 		case strings.HasPrefix(l, "✓"):
-			c = green
+			paint = green
 		case strings.HasPrefix(l, "▶"):
-			c = amber
+			paint = amber
 		case strings.HasPrefix(l, "✗"):
-			c = red
+			paint = red
 		}
-		r.printf("    %s%s%s\n", c, oneLine(l, termWidth()-6), reset)
+		out = append(out, "    "+paint(oneLine(l, termWidth()-6)))
 	}
+	r.println(strings.Join(out, "\n"))
 }
 
+// Approve is the permission gate: the request is printed into the
+// scrollback and answered with a Huh select (or y / a / g / n, or ctrl+y).
 func (r *REPL) Approve(ctx context.Context, call llm.ToolCall, gate agent.Gate) agent.Decision {
-	summary := gate.Summary
 	r.spin.Stop()
 	r.md.Flush()
-	bar := strings.Repeat("▀", min(termWidth()-14, 48))
-	r.printf("\n  %s▛▀ GATE %s%s\n", amber, bar, reset)
-	r.printf("  %s▌%s %s%s%s requests permission\n", amber, reset, bold, strings.ToUpper(call.Name), reset)
-	detail := summary
+	detail := gate.Summary
 	if call.Name == "write_file" || call.Name == "edit_file" {
 		detail = describeEdit(call)
 	}
-	for _, l := range strings.Split(strings.TrimRight(detail, "\n"), "\n") {
-		r.printf("  %s▌%s %s\n", amber, reset, l)
-	}
-	r.printf("  %s▙%s%s\n", amber, strings.Repeat("▄", len([]rune(bar))+7), reset)
+	box := amberBold("GATE") + " " + bold(strings.ToUpper(call.Name)) + " requests permission\n" + strings.TrimRight(detail, "\n")
+	r.println("\n" + gateBox.Render(box))
 
-	old, err := term.MakeRaw(r.fd)
-	if err != nil {
+	dec := agent.Allow
+	opts := []huh.Option[agent.Decision]{huh.NewOption("y  run it", agent.Allow)}
+	keys := map[string]func(){"y": func() { dec = agent.Allow }, "n": func() { dec = agent.Deny }}
+	if gate.Scope != "" {
+		opts = append(opts,
+			huh.NewOption("a  always allow "+gate.Scope+" in this project", agent.AlwaysAllow),
+			huh.NewOption("g  always allow "+gate.Scope+" everywhere", agent.AlwaysAllowGlobal))
+		keys["a"] = func() { dec = agent.AlwaysAllow }
+		keys["g"] = func() { dec = agent.AlwaysAllowGlobal }
+	}
+	opts = append(opts, huh.NewOption("n  block", agent.Deny))
+	sel := huh.NewSelect[agent.Decision]().
+		Title("Allow " + strings.ToUpper(call.Name) + "?").
+		Description("ctrl+y turns on YOLO and runs it").
+		Options(opts...).Value(&dec)
+	yoloed := false
+	ok := r.runForm(huh.NewForm(huh.NewGroup(sel)), func(req *formReq) {
+		req.hotkeys = keys
+		req.onYolo = func() {
+			if !r.yolo() {
+				r.toggleYolo()
+			}
+			dec, yoloed = agent.Allow, true
+		}
+	})
+	if !ok {
+		r.interrupt()
 		return agent.Deny
 	}
-	defer term.Restore(r.fd, old)
-	r.gating = true
-	defer func() { r.gating = false }()
-	opts := fmt.Sprintf("  %s[y]%s run  ", lime, reset)
-	if gate.Scope != "" {
-		opts += fmt.Sprintf("%s[a]%s always %s%s%s here  %s[g]%s everywhere  ", lime, reset, bold, gate.Scope, reset, lime, reset)
+	switch {
+	case yoloed:
+		r.println(r.yoloLine(true))
+	case dec == agent.AlwaysAllow:
+		r.printf("  %s", slate("remembered: "+gate.Scope+" is always allowed in this project (/permissions to undo)"))
+	case dec == agent.AlwaysAllowGlobal:
+		r.printf("  %s", slate("remembered: "+gate.Scope+" is always allowed everywhere (/permissions to undo)"))
 	}
-	opts += fmt.Sprintf("%s[ctrl+y]%s yolo  ", amber, reset)
-	r.t.SetPrompt(opts + fmt.Sprintf("%s[n]%s block %s▸%s ", red, reset, amber, reset))
-	for {
-		ans, err := r.t.ReadLine()
-		if err != nil {
-			r.mu.Lock()
-			if r.cancel != nil {
-				r.cancel()
-			}
-			r.mu.Unlock()
-			return agent.Deny
-		}
-		switch strings.ToLower(strings.TrimSpace(ans)) {
-		case "y", "yes", "":
-			return agent.Allow
-		case "a", "always":
-			if gate.Scope != "" {
-				r.printf("  %sremembered: %s is always allowed in this project (/permissions to undo)%s\n", slate, gate.Scope, reset)
-				return agent.AlwaysAllow
-			}
-		case "g", "global", "everywhere":
-			if gate.Scope != "" {
-				r.printf("  %sremembered: %s is always allowed everywhere (/permissions to undo)%s\n", slate, gate.Scope, reset)
-				return agent.AlwaysAllowGlobal
-			}
-		case "n", "no":
-			return agent.Deny
-		}
+	if dec != agent.Deny {
+		r.spin = r.startSpinner("running " + call.Name)
 	}
+	return dec
 }
 
 func describeEdit(call llm.ToolCall) string {
@@ -695,26 +525,18 @@ func describeEdit(call llm.ToolCall) string {
 	fmt.Fprintf(&b, "%v\n", a["path"])
 	if old, ok := a["old_string"].(string); ok {
 		for _, l := range strings.Split(preview(old, 6), "\n") {
-			fmt.Fprintf(&b, "%s- %s%s\n", red, strings.TrimSpace(l), reset)
+			b.WriteString(red("- "+strings.TrimSpace(l)) + "\n")
 		}
 		nw, _ := a["new_string"].(string)
 		for _, l := range strings.Split(preview(nw, 6), "\n") {
-			fmt.Fprintf(&b, "%s+ %s%s\n", green, strings.TrimSpace(l), reset)
+			b.WriteString(green("+ "+strings.TrimSpace(l)) + "\n")
 		}
 	} else if c, ok := a["content"].(string); ok {
 		for _, l := range strings.Split(preview(c, 8), "\n") {
-			fmt.Fprintf(&b, "%s+ %s%s\n", green, strings.TrimSpace(l), reset)
+			b.WriteString(green("+ "+strings.TrimSpace(l)) + "\n")
 		}
 	}
 	return b.String()
-}
-
-func oneLine(s string, max int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if max > 10 && len(s) > max {
-		return s[:max-1] + "…"
-	}
-	return s
 }
 
 // --- slash commands -----------------------------------------------------
@@ -729,62 +551,54 @@ func (r *REPL) command(line string) (quit bool) {
 	case "/exit", "/quit":
 		return true
 	case "/help":
-		r.printf("\n  %s COMMANDS %s\n", onLime, reset)
-		for _, c := range commands {
-			r.printf("  %s%-13s%s %-36s %s%s%s\n", lime, c.name, reset, c.args, slate, c.help, reset)
-		}
-		if sk := r.app.Skills.List(); len(sk) > 0 {
-			r.printf("\n  %s SKILLS %s %s/<name> [request]%s\n", onLime, reset, slate, reset)
-			for _, s := range sk {
-				r.printf("  %s/%-20s%s %s%s%s\n", magenta, s.Name, reset, dim, oneLine(s.Description, termWidth()-26), reset)
-			}
-		}
-		r.printf("\n%sTips: end a line with \\ for multi-line input · paste multi-line text freely · @path/to/img.png attaches an image%s\n\n", dim, reset)
+		r.printHelp()
 	case "/clear":
 		r.sess.Clear()
-		r.pending = nil
-		r.printf("%sconversation cleared%s\n", dim, reset)
+		r.takePending()
+		r.printf("%s", slate("conversation cleared"))
 	case "/paste":
 		img, err := media.ClipboardImage()
 		if err != nil {
-			r.printf("%s%v%s\n", yellow, err, reset)
+			r.printf("%s", yellow(err.Error()))
 			return
 		}
-		r.pending = append(r.pending, attachment{name: "clipboard", img: img})
-		r.printf("  %s▣ image attached (%s, %d KB) — type your message%s\n", magenta, img.MediaType, len(img.Data)/1024, reset)
+		r.addPending(attachment{name: "clipboard", img: img})
+		r.printf("  %s", magenta(fmt.Sprintf("▣ image attached (%s, %d KB) — type your message", img.MediaType, len(img.Data)/1024)))
 	case "/image":
 		_, imgs, names := media.ExtractImages(rest)
 		if len(imgs) == 0 {
-			r.printf("%sno image found at %q%s\n", yellow, rest, reset)
+			r.printf("%s", yellow(fmt.Sprintf("no image found at %q", rest)))
 			return
 		}
 		for i, img := range imgs {
-			r.pending = append(r.pending, attachment{name: names[i], img: img})
+			r.addPending(attachment{name: names[i], img: img})
 		}
-		r.printf("  %s▣ attached %s%s\n", magenta, strings.Join(names, ", "), reset)
+		r.printf("  %s", magenta("▣ attached "+strings.Join(names, ", ")))
 	case "/model":
 		if len(args) == 0 {
 			r.pickModel(ctx)
 			return
 		}
 		r.update(func(c *config.Config) error { c.Providers[c.ActiveProvider].Model = rest; return nil })
-		r.printf("%smodel → %s%s\n", dim, rest, reset)
+		r.printf("%s", slate("model → "+rest))
 	case "/models":
 		p, cur, err := r.app.Provider()
 		if err == nil {
 			var models []string
 			if models, err = p.ListModels(ctx); err == nil {
+				var out []string
 				for _, m := range models {
 					mark := "  "
 					if m == cur {
-						mark = green + "● " + reset
+						mark = green("● ")
 					}
-					r.printf("%s%s\n", mark, m)
+					out = append(out, mark+m)
 				}
+				r.println(strings.Join(out, "\n"))
 			}
 		}
 		if err != nil {
-			r.printf("%s%v%s\n", red, err, reset)
+			r.printf("%s", red(err.Error()))
 		}
 	case "/provider", "/providers":
 		cfg := r.app.Config.Get()
@@ -793,11 +607,11 @@ func (r *REPL) command(line string) (quit bool) {
 			return
 		}
 		if _, ok := cfg.Providers[args[0]]; !ok {
-			r.printf("%sno provider %q — add it in /dashboard or %s%s\n", red, args[0], r.app.Config.Path(), reset)
+			r.printf("%s", red(fmt.Sprintf("no provider %q — add it in /dashboard or %s", args[0], r.app.Config.Path())))
 			return
 		}
 		r.update(func(c *config.Config) error { c.ActiveProvider = args[0]; return nil })
-		r.printf("%sprovider → %s (%s)%s\n", dim, args[0], r.app.Config.Get().Providers[args[0]].Model, reset)
+		r.printf("%s", slate(fmt.Sprintf("provider → %s (%s)", args[0], r.app.Config.Get().Providers[args[0]].Model)))
 	case "/init":
 		r.initProject()
 	case "/memory", "/memories":
@@ -812,51 +626,37 @@ func (r *REPL) command(line string) (quit bool) {
 		r.voiceCommand(ctx, args)
 	case "/speak":
 		if r.lastReply == "" {
-			r.printf("%snothing to speak yet%s\n", dim, reset)
+			r.printf("%s", slate("nothing to speak yet"))
 			return
 		}
 		r.speak(r.lastReply)
 	case "/skills":
 		list := r.app.Skills.List()
 		if len(list) == 0 {
-			r.printf("%sno skills installed — try /skill add github:anthropics/skills/skills/pdf%s\n", dim, reset)
+			r.printf("%s", slate("no skills installed — try /skill add github:anthropics/skills/skills/pdf"))
 			return
 		}
+		var out []string
 		for _, s := range list {
-			r.printf("  %s%-16s%s %s%s%s\n", magenta, s.Name, reset, dim, oneLine(s.Description, termWidth()-22), reset)
+			out = append(out, fmt.Sprintf("  %s %s", magenta(fmt.Sprintf("%-16s", s.Name)), slate(oneLine(s.Description, termWidth()-22))))
 		}
+		r.println(strings.Join(out, "\n"))
 	case "/skill":
 		r.skillCommand(ctx, args)
 	case "/tools":
-		errs := r.app.ReloadTools()
-		for _, t := range r.app.Tools.All() {
-			flag := "      "
-			if t.NeedsApproval {
-				flag = yellow + "asks  " + reset
-			}
-			src := t.Source
-			if src != "builtin" && src != "bundled" {
-				src = "script"
-			}
-			r.printf("  %s%-16s%s %s%-8s%s %s%s%s%s\n", cyan, t.Spec.Name, reset, slate, src, reset, flag, dim, oneLine(t.Spec.Description, termWidth()-36), reset)
-		}
-		r.printf("  %s%-16s%s %s%-8s%s %s%s%s\n", cyan, "ask_user", reset, slate, "builtin", reset, "      "+dim, "pause and ask you a question whenever information is missing", reset)
-		for _, err := range errs {
-			r.printf("  %s! %v%s\n", amber, err, reset)
-		}
-		r.printf("  %sscript tools: %s%s\n", slate, strings.Join(agent.ToolDirs(), " · "), reset)
+		r.listTools()
 	case "/tool":
 		if len(args) < 2 || args[0] != "new" {
-			r.printf("usage: /tool new <name>  — creates a script tool in %s\n", agent.ToolDirs()[1])
+			r.printf("usage: /tool new <name>  — creates a script tool in %s", agent.ToolDirs()[1])
 			return
 		}
 		dir, err := itools.ScaffoldScriptTool(agent.ToolDirs()[1], args[1])
 		if err != nil {
-			r.printf("%s%v%s\n", red, err, reset)
+			r.printf("%s", red(err.Error()))
 			return
 		}
 		r.app.ReloadTools()
-		r.printf("  %s✓ created %s%s — edit tool.json and run.py, then /tools to reload\n", green, dir, reset)
+		r.printf("  %s — edit tool.json and run.py, then /tools to reload", green("✓ created "+dir))
 	case "/domain", "/domains":
 		if len(args) == 0 {
 			r.pickDomain()
@@ -864,7 +664,7 @@ func (r *REPL) command(line string) (quit bool) {
 		}
 		d, ok := agent.ParseDomain(args[0])
 		if !ok {
-			r.printf("%sunknown domain %q — software, docs, cyber, devops or pm%s\n", yellow, args[0], reset)
+			r.printf("%s", yellow(fmt.Sprintf("unknown domain %q — software, docs, cyber, devops or pm", args[0])))
 			return
 		}
 		r.domainCommand(d, args[1:], strings.TrimSpace(strings.TrimPrefix(rest, args[0])))
@@ -876,7 +676,7 @@ func (r *REPL) command(line string) (quit bool) {
 	case "/work":
 		r.workCommand()
 	case "/yolo":
-		r.printf("%s", r.yoloLine(r.toggleYolo()))
+		r.println(r.yoloLine(r.toggleYolo()))
 	case "/mode", "/modes":
 		if len(args) == 0 {
 			r.pickMode()
@@ -884,7 +684,7 @@ func (r *REPL) command(line string) (quit bool) {
 		}
 		m, ok := agent.ParseMode(args[0])
 		if !ok {
-			r.printf("%sunknown mode %q — build, plan, loop or ask%s\n", yellow, args[0], reset)
+			r.printf("%s", yellow(fmt.Sprintf("unknown mode %q — build, plan, loop or ask", args[0])))
 			return
 		}
 		r.modeCommand(m, strings.TrimSpace(strings.TrimPrefix(rest, args[0])))
@@ -899,30 +699,16 @@ func (r *REPL) command(line string) (quit bool) {
 	case "/dashboard":
 		url, err := dashboard.Ensure(r.app)
 		if err != nil {
-			r.printf("%s%v%s\n", red, err, reset)
+			r.printf("%s", red(err.Error()))
 			return
 		}
-		r.printf("%sdashboard running at %s%s\n", dim, url, reset)
+		r.printf("%s", slate("dashboard running at "+url))
 		dashboard.OpenBrowser(url)
 	case "/config":
-		cfg := r.app.Config.Get()
-		name, pc := cfg.Active()
-		verify := cfg.Loop.Verify
-		if verify == "" {
-			cwd, _ := os.Getwd()
-			verify = "auto (nothing detected)"
-			if d := agent.DetectVerify(cwd); d != "" {
-				verify = "auto → " + d
-			}
-		}
-		r.printf("  file:       %s\n  provider:   %s (%s @ %s)\n  model:      %s\n  mode:       %s\n  track:      %s\n  review:     %s\n  yolo:       %v (saved auto_approve: %v)\n  loop:       %d iterations · %d attempts/step · %d tool rounds/step · verify: %s\n  voice:      %v (%s)\n  skills dir: %s\n  memory:     %s · %s\n  permissions: %s\n",
-			r.app.Config.Path(), name, pc.Type, pc.BaseURL, pc.Model, r.mode(), r.track(), reviewState(cfg.Review), r.yolo(), cfg.AutoApprove,
-			cfg.Loop.MaxIterations, cfg.Loop.StepAttempts, cfg.Loop.StepRounds, verify,
-			cfg.Audio.Enabled, cfg.Audio.Engine, r.app.Skills.InstallDir(),
-			r.app.Memory.Dir("user"), r.app.Memory.Dir("project"), r.app.Perms.Path())
+		r.printConfig()
 	case "/usage":
 		u := r.sess.Usage
-		r.printf("  last context: %d tokens · generated: %d tokens · messages: %d\n", u.InputTokens, u.OutputTokens, len(r.sess.History))
+		r.printf("  last context: %d tokens · generated: %d tokens · messages: %d", u.InputTokens, u.OutputTokens, len(r.sess.History))
 	default:
 		name := strings.TrimPrefix(cmd, "/")
 		if sk := r.app.Skills.Get(name); sk != nil {
@@ -930,13 +716,68 @@ func (r *REPL) command(line string) (quit bool) {
 			if req == "" {
 				req = "Follow the skill's instructions."
 			}
-			r.printf("  %s✦ skill %s%s\n", magenta, sk.Name, reset)
+			r.printf("  %s", magenta("✦ skill "+sk.Name))
 			r.send(agent.SkillPrompt(sk) + "\n\n---\nUser request: " + req)
 			return
 		}
-		r.printf("%sunknown command %s — /help lists commands%s\n", yellow, cmd, reset)
+		r.printf("%s", yellow("unknown command "+cmd+" — /help lists commands"))
 	}
 	return false
+}
+
+func (r *REPL) printHelp() {
+	var out []string
+	out = append(out, "", "  "+badge(colLime, "COMMANDS"))
+	for _, c := range commands {
+		out = append(out, fmt.Sprintf("  %s %-36s %s", lime(fmt.Sprintf("%-13s", c.name)), c.args, slate(c.help)))
+	}
+	if sk := r.app.Skills.List(); len(sk) > 0 {
+		out = append(out, "", "  "+badge(colLime, "SKILLS")+" "+slate("/<name> [request]"))
+		for _, s := range sk {
+			out = append(out, fmt.Sprintf("  %s %s", magenta(fmt.Sprintf("/%-20s", s.Name)), slate(oneLine(s.Description, termWidth()-26))))
+		}
+	}
+	out = append(out, "", slate("Tips: ctrl+j (or end a line with \\) for a new line · paste multi-line text freely · ↑/↓ recall earlier inputs · @path/to/img.png attaches an image"), "")
+	r.println(strings.Join(out, "\n"))
+}
+
+func (r *REPL) listTools() {
+	errs := r.app.ReloadTools()
+	var out []string
+	for _, t := range r.app.Tools.All() {
+		flag := "      "
+		if t.NeedsApproval {
+			flag = yellow("asks  ")
+		}
+		src := t.Source
+		if src != "builtin" && src != "bundled" {
+			src = "script"
+		}
+		out = append(out, fmt.Sprintf("  %s %s %s%s", cyan(fmt.Sprintf("%-16s", t.Spec.Name)), slate(fmt.Sprintf("%-8s", src)), flag, slate(oneLine(t.Spec.Description, termWidth()-36))))
+	}
+	out = append(out, fmt.Sprintf("  %s %s       %s", cyan(fmt.Sprintf("%-16s", "ask_user")), slate(fmt.Sprintf("%-8s", "builtin")), slate("pause and ask you a question whenever information is missing")))
+	for _, err := range errs {
+		out = append(out, "  "+amber(fmt.Sprintf("! %v", err)))
+	}
+	out = append(out, "  "+slate("script tools: "+strings.Join(agent.ToolDirs(), " · ")))
+	r.println(strings.Join(out, "\n"))
+}
+
+func (r *REPL) printConfig() {
+	cfg := r.app.Config.Get()
+	name, pc := cfg.Active()
+	verify := cfg.Loop.Verify
+	if verify == "" {
+		verify = "auto (nothing detected)"
+		if d := agent.DetectVerify(workingDir()); d != "" {
+			verify = "auto → " + d
+		}
+	}
+	r.printf("  file:       %s\n  provider:   %s (%s @ %s)\n  model:      %s\n  mode:       %s\n  track:      %s\n  review:     %s\n  yolo:       %v (saved auto_approve: %v)\n  loop:       %d iterations · %d attempts/step · %d tool rounds/step · verify: %s\n  voice:      %v (%s)\n  skills dir: %s\n  memory:     %s · %s\n  permissions: %s",
+		r.app.Config.Path(), name, pc.Type, pc.BaseURL, pc.Model, r.mode(), r.track(), reviewState(cfg.Review), r.yolo(), cfg.AutoApprove,
+		cfg.Loop.MaxIterations, cfg.Loop.StepAttempts, cfg.Loop.StepRounds, verify,
+		cfg.Audio.Enabled, cfg.Audio.Engine, r.app.Skills.InstallDir(),
+		r.app.Memory.Dir("user"), r.app.Memory.Dir("project"), r.app.Perms.Path())
 }
 
 // modeCommand switches mode and, given a request, sends it in that mode.
@@ -944,9 +785,8 @@ func (r *REPL) modeCommand(m agent.Mode, request string) {
 	if r.mode() != m {
 		r.setMode(m)
 		if m == agent.ModeLoop && r.sess.Plan != "" {
-			r.printf("  %s/loop runs the plan you just made%s\n", slate, reset)
+			r.printf("  %s", slate("/loop runs the plan you just made"))
 		}
-		r.printStrip()
 	}
 	if request != "" {
 		r.send(request)
@@ -970,8 +810,7 @@ func (r *REPL) domainCommand(d agent.Domain, args []string, rest string) {
 	if t != r.track() {
 		r.setTrack(t)
 	}
-	r.printf("%s", r.trackLine())
-	r.printStrip()
+	r.println(r.trackLine())
 	if rest != "" {
 		r.send(rest)
 	}
@@ -988,7 +827,7 @@ func (r *REPL) pickDomain() {
 			sel = i
 		}
 	}
-	it := r.choose("domain", items, sel)
+	it := r.choose("Domain", items, sel)
 	if it == nil {
 		return
 	}
@@ -1022,14 +861,14 @@ func (r *REPL) pickMode() {
 			sel = i
 		}
 	}
-	if it := r.choose("mode", items, sel); it != nil {
+	if it := r.choose("Mode", items, sel); it != nil {
 		m, _ := agent.ParseMode(it.Value)
 		r.modeCommand(m, "")
 	}
 }
 
 func (r *REPL) loopCommand(args []string, rest string) {
-	cwd, _ := os.Getwd()
+	cwd := workingDir()
 	sub := ""
 	if len(args) > 0 {
 		sub = strings.ToLower(args[0])
@@ -1038,32 +877,32 @@ func (r *REPL) loopCommand(args []string, rest string) {
 	case "":
 		if r.sess.Plan != "" {
 			steps := agent.ParseSteps(r.sess.Plan)
-			r.printf("  %srunning the plan from plan mode (%d steps)%s\n", slate, len(steps), reset)
+			r.printf("  %s", slate(fmt.Sprintf("running the plan from plan mode (%d steps)", len(steps))))
 			r.loop(r.sess.PlanGoal, agent.LoopOptions{Steps: steps})
 			r.sess.Plan, r.sess.PlanGoal = "", ""
 			return
 		}
 		r.modeCommand(agent.ModeLoop, "")
-		r.printf("  %stype the objective, e.g. \"add a --json flag to the list command, with tests\"%s\n", slate, reset)
+		r.printf("  %s", slate(`type the objective, e.g. "add a --json flag to the list command, with tests"`))
 	case "resume", "continue":
 		r.loop("", agent.LoopOptions{Resume: true, Notes: strings.TrimSpace(strings.TrimPrefix(rest, args[0]))})
 	case "status":
 		st, err := agent.LoadLoop(cwd)
 		if err != nil {
-			r.printf("%s%v%s\n", dim, err, reset)
+			r.printf("%s", slate(err.Error()))
 			return
 		}
 		done, total := st.Progress()
-		r.printf("  %s%s⟳ LOOP %s %s%s%s · %d/%d steps · %d iterations · updated %s\n  %sobjective:%s %s\n",
-			bold, onAmber, reset, amber, st.Status, reset, done, total, st.Iteration, st.Updated.Format("Jan 2 15:04"), slate, reset, st.Objective)
+		r.printf("  %s %s · %d/%d steps · %d iterations · updated %s\n  %s %s",
+			badge(colAmber, "⟳ LOOP"), amber(string(st.Status)), done, total, st.Iteration, st.Updated.Format("Jan 2 15:04"), slate("objective:"), st.Objective)
 		if st.Outcome != "" {
-			r.printf("  %s%s%s\n", slate, st.Outcome, reset)
+			r.printf("  %s", slate(st.Outcome))
 		}
 		r.printChecklist(st)
 	case "verify":
 		cmd := strings.TrimSpace(strings.TrimPrefix(rest, args[0]))
 		if cmd == "" {
-			r.printf("usage: /loop verify <command>  ·  /loop verify none  ·  /loop verify auto\n")
+			r.printf("usage: /loop verify <command>  ·  /loop verify none  ·  /loop verify auto")
 			return
 		}
 		if cmd == "auto" {
@@ -1073,7 +912,7 @@ func (r *REPL) loopCommand(args []string, rest string) {
 		if cmd == "" {
 			cmd = "auto-detect (" + agent.DetectVerify(cwd) + ")"
 		}
-		r.printf("%sloop verification → %s%s\n", dim, cmd, reset)
+		r.printf("%s", slate("loop verification → "+cmd))
 	default:
 		r.loop(rest, agent.LoopOptions{})
 	}
@@ -1081,41 +920,52 @@ func (r *REPL) loopCommand(args []string, rest string) {
 
 func (r *REPL) skillCommand(ctx context.Context, args []string) {
 	if len(args) < 2 {
-		r.printf("usage: /skill add <path|url|github:owner/repo[/path][@ref]>  ·  /skill rm <name>  ·  /skill show <name>\n")
+		r.printf("usage: /skill add <path|url|github:owner/repo[/path][@ref]>  ·  /skill rm <name>  ·  /skill show <name>")
 		return
 	}
 	switch args[0] {
 	case "add", "import", "install":
-		sp := startSpinner("importing " + args[1])
+		sp := r.startSpinner("importing " + args[1])
 		got, err := r.app.Skills.Import(ctx, args[1])
 		sp.Stop()
 		if err != nil {
-			r.printf("%s%v%s\n", red, err, reset)
+			r.printf("%s", red(err.Error()))
 			return
 		}
 		for _, s := range got {
-			r.printf("%s✓%s %s%s%s  %s%s%s\n", green, reset, magenta, s.Name, reset, dim, s.Description, reset)
+			r.printf("%s %s  %s", green("✓"), magenta(s.Name), slate(s.Description))
 		}
 	case "rm", "remove", "delete":
 		if err := r.app.Skills.Remove(args[1]); err != nil {
-			r.printf("%s%v%s\n", red, err, reset)
+			r.printf("%s", red(err.Error()))
 			return
 		}
-		r.printf("%sremoved %s%s\n", dim, args[1], reset)
+		r.printf("%s", slate("removed "+args[1]))
 	case "show":
 		sk := r.app.Skills.Get(args[1])
 		if sk == nil {
-			r.printf("%sno skill %q%s\n", red, args[1], reset)
+			r.printf("%s", red(fmt.Sprintf("no skill %q", args[1])))
 			return
 		}
-		r.printf("%s%s%s — %s\n%s%s%s\n%s\n", bold, sk.Name, reset, sk.Description, dim, sk.Dir, reset, sk.Body)
+		r.printf("%s — %s\n%s", bold(sk.Name), sk.Description, slate(sk.Dir))
+		r.println(gutterLines(renderMarkdown(sk.Body, termWidth()-4)))
 	default:
-		r.printf("unknown /skill subcommand %q\n", args[0])
+		r.printf("unknown /skill subcommand %q", args[0])
 	}
 }
 
 func (r *REPL) update(fn func(c *config.Config) error) {
 	if err := r.app.Config.Update(fn); err != nil {
-		r.printf("%s%v%s\n", red, err, reset)
+		r.printf("%s", red(err.Error()))
 	}
+}
+
+func workingDir() string {
+	cwd, _ := os.Getwd()
+	return cwd
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }

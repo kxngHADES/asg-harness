@@ -24,7 +24,7 @@ There are four ways; pick whichever is fastest for you.
 ### 1. Shift+Tab — cycle
 
 Press **Shift+Tab** at the prompt. The order is build → plan → loop → ask →
-build. The status line above the prompt is redrawn in place, so you can tap
+build. The status line above the input changes in place, so you can tap
 through quickly and watch the highlight move:
 
 ```
@@ -89,13 +89,15 @@ asg -loop -p "add a --json flag to list, with tests"     # one-shot loop run
  BUILD  software/project  qwen3.5:9b ▸ rename the `cfg` package to `config` and fix the imports
   ◆ GREP cfg\.
   ◆ EDIT_FILE cmd/asg/main.go
-  ▛▀ GATE ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
-  ▌ EDIT_FILE requests permission
-  ▌ cmd/asg/main.go
-  ▌ - "github.com/me/app/cfg"
-  ▌ + "github.com/me/app/config"
-  ▙▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
-  [y] run  [a] always edit_file here  [g] everywhere  [ctrl+y] yolo  [n] block ▸ y
+  ┃ GATE EDIT_FILE requests permission
+  ┃ cmd/asg/main.go
+  ┃ - "github.com/me/app/cfg"
+  ┃ + "github.com/me/app/config"
+  ┃ Allow EDIT_FILE?
+  ┃ ▸ y  run it
+  ┃   a  always allow edit_file in this project
+  ┃   g  always allow edit_file everywhere
+  ┃   n  block
 ```
 
 - Every change goes through a [GATE](permissions.md) unless YOLO is on.

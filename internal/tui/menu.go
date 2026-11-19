@@ -2,147 +2,10 @@ package tui
 
 import (
 	"fmt"
-	"io"
-	"regexp"
 	"strings"
-	"sync"
-	"unicode/utf8"
+
+	"charm.land/lipgloss/v2"
 )
-
-// inputQueue sits between stdin and the line editor so menus can read
-// keys themselves and push bytes back (e.g. an Enter to submit a choice).
-type inputQueue struct {
-	mu  sync.Mutex
-	buf []byte
-	r   io.Reader
-}
-
-func (q *inputQueue) Read(p []byte) (int, error) {
-	q.mu.Lock()
-	if len(q.buf) > 0 {
-		n := copy(p, q.buf)
-		q.buf = q.buf[n:]
-		q.mu.Unlock()
-		return n, nil
-	}
-	q.mu.Unlock()
-	n, err := q.r.Read(p)
-	markShiftTab(p[:n])
-	markCtrlT(p[:n])
-	return n, err
-}
-
-// keyCtrlT stands in for Ctrl+T, which the line editor would otherwise
-// treat as "transpose characters" and never pass on. It is rewritten to
-// Ctrl+] — a byte the editor hands to the key callback untouched.
-const keyCtrlT = 0x1d
-
-func markCtrlT(b []byte) {
-	for i, c := range b {
-		if c == 0x14 {
-			b[i] = keyCtrlT
-		}
-	}
-}
-
-// keyShiftTab stands in for Shift+Tab (ESC [ Z). The line editor reports
-// every unrecognised escape sequence as the same "unknown" key, so the
-// sequence is rewritten on the way in to a private-use rune it passes
-// through to the key callback. Both encodings are three bytes long.
-const keyShiftTab = '\uE0F1'
-
-var shiftTabSeq, shiftTabRune = []byte("\x1b[Z"), []byte(string(keyShiftTab))
-
-func markShiftTab(b []byte) {
-	for i := 0; i+len(shiftTabSeq) <= len(b); i++ {
-		if b[i] == 0x1b && b[i+1] == '[' && b[i+2] == 'Z' {
-			copy(b[i:], shiftTabRune)
-			i += len(shiftTabRune) - 1
-		}
-	}
-}
-
-// unread puts bytes back in front of the queue.
-func (q *inputQueue) unread(b []byte) {
-	q.mu.Lock()
-	q.buf = append(append([]byte(nil), b...), q.buf...)
-	q.mu.Unlock()
-}
-
-type keyKind int
-
-const (
-	kRune keyKind = iota
-	kUp
-	kDown
-	kEnter
-	kTab
-	kEsc
-	kBack
-	kCancel
-	kOther
-)
-
-type key struct {
-	kind keyKind
-	r    rune
-}
-
-func (q *inputQueue) readKey() (key, error) {
-	buf := make([]byte, 64)
-	n, err := q.Read(buf)
-	if err != nil {
-		return key{}, err
-	}
-	k, used := parseKey(buf[:n])
-	if used < n {
-		q.unread(buf[used:n])
-	}
-	return k, nil
-}
-
-// parseKey decodes the first key in b and reports how many bytes it used.
-func parseKey(b []byte) (key, int) {
-	switch b[0] {
-	case 0x1b:
-		if len(b) >= 3 && (b[1] == '[' || b[1] == 'O') {
-			switch b[2] {
-			case 'A':
-				return key{kind: kUp}, 3
-			case 'B':
-				return key{kind: kDown}, 3
-			}
-			i := 2 // skip any other CSI sequence up to its final byte
-			for i < len(b) && (b[i] < 0x40 || b[i] > 0x7e) {
-				i++
-			}
-			return key{kind: kOther}, min(i+1, len(b))
-		}
-		return key{kind: kEsc}, 1
-	case '\r':
-		if len(b) > 1 && b[1] == '\n' {
-			return key{kind: kEnter}, 2
-		}
-		return key{kind: kEnter}, 1
-	case '\n':
-		return key{kind: kEnter}, 1
-	case '\t':
-		return key{kind: kTab}, 1
-	case 0x7f, 0x08:
-		return key{kind: kBack}, 1
-	case 0x03, 0x04:
-		return key{kind: kCancel}, 1
-	case 0x10: // ctrl+p
-		return key{kind: kUp}, 1
-	case 0x0e: // ctrl+n
-		return key{kind: kDown}, 1
-	}
-	r, size := utf8.DecodeRune(b)
-	if r < 0x20 || r == utf8.RuneError || r == keyShiftTab {
-		return key{kind: kOther}, max(size, 1)
-	}
-	return key{kind: kRune, r: r}, size
-}
 
 type menuItem struct {
 	Label  string // main text, e.g. "/model" or a model name
@@ -152,193 +15,109 @@ type menuItem struct {
 	Value  string
 }
 
-// picker is a filterable list drawn under the cursor line. In slash mode
-// the line above the list is the prompt plus "/filter", so it reads as a
-// dropdown attached to what the user is typing.
-type picker struct {
-	items  []menuItem
-	filter string
-	sel    int
-	top    int
-	rows   int
-	slash  bool
-	title  string // header in standalone mode
-	prompt string // prompt text in slash mode
-	drawn  bool
-}
-
-const (
-	pickChose = iota
-	pickTyped
-	pickCancel
-)
-
-func (p *picker) visible() []menuItem {
-	f := strings.ToLower(strings.TrimPrefix(p.filter, "/"))
+// filterItems keeps the items matching filter: an exact match first, then
+// label prefix matches, then labels or details containing it.
+func filterItems(items []menuItem, filter string) []menuItem {
+	f := strings.ToLower(strings.TrimPrefix(filter, "/"))
 	if f == "" {
-		return p.items
+		return items
 	}
-	var prefix, sub []menuItem
-	for _, it := range p.items {
+	var exact, prefix, sub []menuItem
+	for _, it := range items {
 		l := strings.ToLower(strings.TrimPrefix(it.Label, "/"))
 		switch {
+		case l == f:
+			exact = append(exact, it)
 		case strings.HasPrefix(l, f):
 			prefix = append(prefix, it)
 		case strings.Contains(l, f) || strings.Contains(strings.ToLower(it.Detail), f):
 			sub = append(sub, it)
 		}
 	}
-	return append(prefix, sub...)
+	return append(append(exact, prefix...), sub...)
 }
 
-func (p *picker) header() string {
-	if p.slash {
-		return p.prompt + "/" + p.filter
+// slashItems lists the commands and installed skills for the '/' menu.
+func (r *REPL) slashItems() []menuItem {
+	var items []menuItem
+	for _, c := range commands {
+		items = append(items, menuItem{Label: c.name, Detail: c.help, Value: c.name})
 	}
-	return "  " + onLime + " " + strings.ToUpper(p.title) + " " + reset + " " + p.filter
+	for _, s := range r.app.Skills.List() {
+		items = append(items, menuItem{Label: "/" + s.Name, Detail: s.Description, Hint: "skill", Value: "/" + s.Name})
+	}
+	return items
 }
 
-func (p *picker) render(w io.Writer) {
-	var b strings.Builder
-	if !p.drawn { // make room so the list never scrolls the header away
-		b.WriteString(strings.Repeat("\r\n", p.rows+1))
-		fmt.Fprintf(&b, "\x1b[%dA", p.rows+1)
-		p.drawn = true
+// menuNeedsArg reports whether choosing value should insert it for editing
+// rather than run it (commands that are useless without arguments, skills).
+func (r *REPL) menuNeedsArg(value string) bool {
+	for _, c := range commands {
+		if c.name == value {
+			return c.needsArg()
+		}
 	}
-	vis := p.visible()
-	if p.sel >= len(vis) {
-		p.sel = len(vis) - 1
+	return true // skills take a request
+}
+
+// slashFilter returns the typed filter when the '/' menu should be open:
+// the input is a single word starting with '/'.
+func slashFilter(input string) (string, bool) {
+	if !strings.HasPrefix(input, "/") || strings.ContainsAny(input, " \n\t") || strings.HasPrefix(input, "//") {
+		return "", false
 	}
-	if p.sel < 0 {
-		p.sel = 0
+	return input, true
+}
+
+const menuRows = 8
+
+var (
+	menuSel    = lipgloss.NewStyle().Foreground(colLime).Bold(true)
+	menuLabel  = lipgloss.NewStyle().Foreground(colLime)
+	menuDetail = lipgloss.NewStyle().Foreground(colSlate)
+	menuHint   = lipgloss.NewStyle().Foreground(colAmber)
+)
+
+// renderMenu draws the dropdown under the input.
+func renderMenu(vis []menuItem, sel, width int) string {
+	if len(vis) == 0 {
+		return "    " + slate("no matching command — enter sends it as typed")
 	}
-	if p.sel < p.top {
-		p.top = p.sel
+	top := 0
+	if sel >= menuRows {
+		top = sel - menuRows + 1
 	}
-	if p.sel >= p.top+p.rows {
-		p.top = p.sel - p.rows + 1
-	}
-	width := termWidth() - 1
 	labelW := 0
 	for _, it := range vis {
-		labelW = max(labelW, utf8.RuneCountInString(it.Label))
+		labelW = max(labelW, visibleLen(it.Label))
 	}
-	labelW = min(labelW, 32)
-
-	b.WriteString("\r\x1b[2K" + p.header())
-	lines := 0
-	for i := p.top; i < len(vis) && i < p.top+p.rows; i++ {
-		b.WriteString("\r\n\x1b[2K" + p.row(vis[i], i == p.sel, labelW, width))
-		lines++
-	}
-	if len(vis) == 0 {
-		b.WriteString("\r\n\x1b[2K    " + slate + "no matches" + reset)
-		lines++
+	labelW = min(labelW, 28)
+	var b strings.Builder
+	for i := top; i < len(vis) && i < top+menuRows; i++ {
+		it := vis[i]
+		label := clip(it.Label, labelW)
+		label += strings.Repeat(" ", max(labelW-visibleLen(label), 0))
+		pre := "    "
+		if i == sel {
+			pre = "  " + lime("▸") + " "
+			label = menuSel.Render(label)
+		} else {
+			label = menuLabel.Render(label)
+		}
+		room := width - 4 - labelW - 2 - visibleLen(it.Hint) - 3
+		line := pre + label
+		if it.Detail != "" && room > 6 {
+			line += "  " + menuDetail.Render(clip(it.Detail, room))
+		}
+		if it.Hint != "" {
+			line += "  " + menuHint.Render(it.Hint)
+		}
+		b.WriteString(line + "\n")
 	}
 	more := ""
-	if len(vis) > p.rows {
-		more = fmt.Sprintf("  %d/%d", p.sel+1, len(vis))
+	if len(vis) > menuRows {
+		more = fmt.Sprintf("  %d/%d", sel+1, len(vis))
 	}
-	b.WriteString("\r\n\x1b[2K    " + slate + "↑↓ move · type to filter · enter select · esc cancel" + more + reset)
-	lines++
-	b.WriteString("\x1b[J")
-	fmt.Fprintf(&b, "\x1b[%dA\r", lines)
-	if col := visibleLen(p.header()); col > 0 {
-		fmt.Fprintf(&b, "\x1b[%dC", col)
-	}
-	fmt.Fprint(w, b.String())
-}
-
-func (p *picker) row(it menuItem, selected bool, labelW, width int) string {
-	mark := "  "
-	if it.Mark {
-		mark = green + "● " + reset
-	}
-	label := clip(it.Label, labelW)
-	label += strings.Repeat(" ", labelW-utf8.RuneCountInString(label))
-	pre := "  "
-	if selected {
-		pre = lime + "▸ " + reset
-		label = lime + bold + label + reset
-	} else if strings.HasPrefix(it.Label, "/") {
-		label = lime + label + reset
-	}
-	room := width - 4 - 2 - labelW - 2 - utf8.RuneCountInString(it.Hint) - 2
-	detail := ""
-	if it.Detail != "" && room > 4 {
-		detail = "  " + slate + clip(it.Detail, room) + reset
-	}
-	hint := ""
-	if it.Hint != "" {
-		hint = "  " + yellow + it.Hint + reset
-	}
-	return "  " + pre + mark + label + detail + hint
-}
-
-// run shows the picker until the user chooses, cancels, or (slash mode)
-// types a space to keep writing arguments by hand.
-func (p *picker) run(q *inputQueue, w io.Writer) (*menuItem, int) {
-	for {
-		p.render(w)
-		k, err := q.readKey()
-		if err != nil {
-			return nil, pickCancel
-		}
-		vis := p.visible()
-		switch k.kind {
-		case kUp:
-			if p.sel--; p.sel < 0 {
-				p.sel = len(vis) - 1
-			}
-		case kDown:
-			if p.sel++; p.sel >= len(vis) {
-				p.sel = 0
-			}
-		case kEnter, kTab:
-			if len(vis) > 0 {
-				it := vis[p.sel]
-				return &it, pickChose
-			}
-			if p.slash {
-				return nil, pickTyped
-			}
-		case kEsc, kCancel:
-			return nil, pickCancel
-		case kBack:
-			if p.filter == "" {
-				if p.slash {
-					return nil, pickCancel
-				}
-				continue
-			}
-			_, size := utf8.DecodeLastRuneInString(p.filter)
-			p.filter = p.filter[:len(p.filter)-size]
-			p.sel, p.top = 0, 0
-		case kRune:
-			if p.slash && k.r == ' ' {
-				p.filter += " "
-				return nil, pickTyped
-			}
-			p.filter += string(k.r)
-			p.sel, p.top = 0, 0
-		}
-	}
-}
-
-// clear erases the picker, leaving the cursor at the start of its header line.
-func (p *picker) clear(w io.Writer) {
-	fmt.Fprint(w, "\r\x1b[J")
-}
-
-var reANSI = regexp.MustCompile(`\x1b\[[0-9;?]*[A-Za-z]`)
-
-func visibleLen(s string) int {
-	return utf8.RuneCountInString(reANSI.ReplaceAllString(s, ""))
-}
-
-func clip(s string, n int) string {
-	if n <= 1 || utf8.RuneCountInString(s) <= n {
-		return s
-	}
-	return string([]rune(s)[:n-1]) + "…"
+	b.WriteString("    " + slate("↑↓ move · tab complete · enter run · esc close"+more))
+	return b.String()
 }

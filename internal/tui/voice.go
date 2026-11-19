@@ -63,13 +63,13 @@ func (r *REPL) voiceCommand(ctx context.Context, args []string) {
 	case "":
 		cfg := r.app.Config.Get()
 		_, pc := cfg.Active()
-		state := map[bool]string{true: green + "on" + reset, false: "off"}[cfg.Audio.Enabled]
+		state := map[bool]string{true: green("on"), false: "off"}[cfg.Audio.Enabled]
 		r.printf("  voice output: %s\n  default:      %s\n  fallback:     %s\n", state, describeSpec(cfg.Audio.VoiceSpec), describeSpec(cfg.Audio.Fallback))
 		for m, s := range cfg.Audio.PerModel {
 			r.printf("  pinned:       %s → %s\n", m, describeSpec(s))
 		}
 		opt := r.app.ResolveVoice(ctx)
-		r.printf("  %snow:          %s → %s%s  %s(%s)%s\n", bold, pc.Model, opt.Label(), reset, dim, opt.Why, reset)
+		r.printf("  %s  %s", bold("now:          "+pc.Model+" → "+opt.Label()), dim("("+opt.Why+")"))
 	case "help":
 		r.printf("%s", voiceHelp)
 	case "on", "off":
@@ -78,17 +78,17 @@ func (r *REPL) voiceCommand(ctx context.Context, args []string) {
 		if !on {
 			r.app.Speaker.Stop()
 		}
-		r.printf("%svoice output %s%s\n", dim, sub, reset)
+		r.printf("%s", slate("voice output "+sub))
 	case "models":
-		sp := startSpinner("checking models")
+		sp := r.startSpinner("checking models")
 		models, err := r.app.SpeechModels(ctx, "")
 		sp.Stop()
 		if err != nil {
-			r.printf("%s%v%s\n", red, err, reset)
+			r.printf("%s", red(err.Error()))
 			return
 		}
 		if len(models) == 0 {
-			r.printf("%sno Ollama speech models installed — try: ollama pull phonon%s\n", dim, reset)
+			r.printf("%s", slate("no Ollama speech models installed — try: ollama pull phonon"))
 			return
 		}
 		for _, m := range models {
@@ -111,10 +111,10 @@ func (r *REPL) voiceCommand(ctx context.Context, args []string) {
 		}
 		voices, err := r.app.Voices(ctx, "", model)
 		if err != nil {
-			r.printf("%s%v%s\n", red, err, reset)
+			r.printf("%s", red(err.Error()))
 			return
 		}
-		r.printf("%s%s%s\n", dim, strings.Join(voices, " · "), reset)
+		r.printf("%s", slate(strings.Join(voices, " · ")))
 	case "unpin":
 		var model string
 		r.update(func(c *config.Config) error {
@@ -122,14 +122,14 @@ func (r *REPL) voiceCommand(ctx context.Context, args []string) {
 			delete(c.Audio.PerModel, model)
 			return nil
 		})
-		r.printf("%sunpinned voice for %s%s\n", dim, model, reset)
+		r.printf("%s", slate("unpinned voice for "+model))
 	case "fallback", "pin":
 		spec, err := parseSpec(args[1:])
 		if err == nil && spec.Engine == "auto" {
 			err = fmt.Errorf("%s needs a concrete engine (ollama, openai or system)", sub)
 		}
 		if err != nil {
-			r.printf("%s%v%s\n", red, err, reset)
+			r.printf("%s", red(err.Error()))
 			return
 		}
 		var model string
@@ -146,14 +146,14 @@ func (r *REPL) voiceCommand(ctx context.Context, args []string) {
 			return nil
 		})
 		if sub == "fallback" {
-			r.printf("%sfallback voice → %s%s\n", dim, describeSpec(spec), reset)
+			r.printf("%s", slate("fallback voice → "+describeSpec(spec)))
 		} else {
-			r.printf("%s%s will be read by %s%s\n", dim, model, describeSpec(spec), reset)
+			r.printf("%s", slate(model+" will be read by "+describeSpec(spec)))
 		}
 	default:
 		spec, err := parseSpec(args)
 		if err != nil {
-			r.printf("%s%v%s\n%s", red, err, reset, voiceHelp)
+			r.printf("%s\n%s", red(err.Error()), voiceHelp)
 			return
 		}
 		r.update(func(c *config.Config) error {
@@ -164,6 +164,6 @@ func (r *REPL) voiceCommand(ctx context.Context, args []string) {
 			return nil
 		})
 		opt := r.app.ResolveVoice(ctx)
-		r.printf("%svoice → %s · now speaking with %s (%s)%s\n", dim, describeSpec(spec), opt.Label(), opt.Why, reset)
+		r.printf("%s", slate("voice → "+describeSpec(spec)+" · now speaking with "+opt.Label()+" ("+opt.Why+")"))
 	}
 }
