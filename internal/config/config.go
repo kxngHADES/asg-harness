@@ -91,6 +91,9 @@ type Config struct {
 	Audio         AudioConfig  `json:"audio"`
 	Loop          LoopConfig   `json:"loop"`
 	Review        ReviewConfig `json:"review"`
+	// MemoryDir is where memory notes live. Empty keeps them in the harness
+	// home (~/.asg/memory and ~/.asg/projects/<p>/memory).
+	MemoryDir string `json:"memory_dir,omitempty"`
 	// Domain and Flavor are the default work track (e.g. software / work).
 	Domain string `json:"domain,omitempty"`
 	Flavor string `json:"flavor,omitempty"`

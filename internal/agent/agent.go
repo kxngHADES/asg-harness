@@ -47,13 +47,22 @@ func NewApp(cfg *config.Store) *App {
 		Skills:  skills.NewManager(config.Dir()),
 		Speaker: &audio.Speaker{},
 		Perms:   perms.Load(config.Dir()),
-		Memory:  memory.New(config.Dir()),
+		Memory:  NewMemory(cfg.Get()),
 	}
 	for _, t := range bundled.Bundled() {
 		a.Tools.Add(t)
 	}
 	a.ReloadTools()
 	return a
+}
+
+// NewMemory opens the memory notes in the configured folder (or the
+// harness home when none is set).
+func NewMemory(c config.Config) *memory.Manager {
+	if c.MemoryDir != "" {
+		return memory.NewIn(c.MemoryDir)
+	}
+	return memory.New(config.Dir())
 }
 
 // ToolDirs are the folders searched for script tools, project first.

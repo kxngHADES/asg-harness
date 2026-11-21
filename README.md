@@ -95,7 +95,7 @@ asg -loop -yolo -p "add a --json flag, with tests"  # unattended; exit code 2 if
 asg -provider anthropic -model claude-opus-5-5      # switch backend (remembered)
 asg dashboard                                       # the browser version on 127.0.0.1:7777
 # desktop app for Windows, macOS and Linux (sessions, projects, code, artifacts,
-# schedules): download asg-desktop_* from the latest release, see docs/desktop.md
+# schedules): run asg-setup_* (the setup wizard) from the latest release, see docs/desktop.md
 ```
 
 The [terminal guide](docs/README.md) goes through every key and command with examples.

@@ -1321,7 +1321,7 @@ async function renderSetBody() {
       <div class="setting"><div class="t"><b>Keyboard</b><span>Ctrl+N new chat · Ctrl+K search · Ctrl+B sidebar · Enter send · Shift+Enter new line · Esc close</span></div></div></div>`;
     return;
   }
-  const st = await api().Storage();
+  const [st, mem] = await Promise.all([api().Storage(), api().Memory()]);
   const isDefault = st.is_default;
   box.innerHTML = `<div class="section"><h3>Where your sessions live</h3><p>Sessions, artifacts, project files and each chat's sandbox are kept in one folder. Put it on an external drive or a synced folder if you like.</p>
     ${S.boot.data_fallback ? `<div class="warnbox">${icon("alert", "sm")}<span>Your chosen folder <b>${esc(S.boot.settings.data_dir)}</b> isn't available right now, so ASG is using the default folder. Plug the drive in and restart ASG.</span></div>` : ""}
@@ -1330,6 +1330,11 @@ async function renderSetBody() {
     <div class="setting"><div class="t"><b>Move everything to another folder</b><span>Copies your sessions, artifacts and sandboxes to a new, empty folder (e.g. on an external drive), then removes the old copy.</span></div><button class="btn primary" data-act="move-data">${icon("drive")}Move…</button></div>
     <div class="setting"><div class="t"><b>Use a different folder</b><span>Switch to a folder that already holds ASG data — say, a drive you used on another PC. Nothing is moved.</span></div><button class="btn" data-act="use-data">${icon("folderOpen")}Choose…</button></div>
     ${isDefault ? "" : `<div class="setting"><div class="t"><b>Back to the default folder</b><span>${esc(shortPath(st.default))} — nothing is moved.</span></div><button class="btn ghost" data-act="reset-data">Reset</button></div>`}
+  </div>
+  <div class="section"><h3>Memory</h3><p>Notes the agent keeps between sessions — your preferences and project facts, one Markdown file each. Shared with the <code>asg</code> terminal app.</p>
+    <div class="storage-path">${icon("drive", "lg")}<div class="t"><b class="selectable">${esc(mem.dir)}</b><span>${mem.is_default ? "Default location" : "Custom location"} · ${mem.notes} note${mem.notes === 1 ? "" : "s"}</span></div><button class="btn sm" data-reveal-dir="${esc(mem.dir)}">${icon("folderOpen")}Open</button></div>
+    <div class="setting"><div class="t"><b>Keep memory somewhere else</b><span>Pick a folder — a synced one works well. Your notes are copied there; the old copies stay where they were.</span></div><button class="btn" data-act="memory-dir">${icon("folderOpen")}Choose…</button></div>
+    ${mem.is_default ? "" : `<div class="setting"><div class="t"><b>Back to the default folder</b><span>${esc(shortPath(mem.default))} — notes are copied back.</span></div><button class="btn ghost" data-act="memory-reset">Reset</button></div>`}
   </div>
   <div class="section"><h3>Sandbox</h3><p>Chats that aren't tied to a folder get their own sandbox: a private folder inside the data folder above. Shell commands, files and downloads land there, never in your real projects. Coding sessions and projects with a folder work in that folder instead, and anything that changes files or runs commands asks first.</p>
     <div class="setting"><div class="t"><b>Sandbox folders</b><span class="selectable" style="font-family:var(--mono)">${esc(st.data_dir)}${S.boot.os === "windows" ? "\\" : "/"}sandbox</span></div><button class="btn sm" data-reveal-dir="${esc(st.data_dir + (S.boot.os === "windows" ? "\\" : "/") + "sandbox")}">${icon("folderOpen")}Open</button></div>
@@ -1657,6 +1662,8 @@ async function onGlobalClick(e) {
     });
     case "move-data": return changeData(true);
     case "use-data": return changeData(false);
+    case "memory-dir": { const prev = (await api().Memory()).dir; const m = await call("ChangeMemoryDir"); if (m.dir !== prev) toast(`Memory now in ${m.dir}`); return renderSetBody(); }
+    case "memory-reset": { await call("ResetMemoryDir"); toast("Memory back in the default folder"); return renderSetBody(); }
     case "reset-data": { await call("ResetDataDir"); S.boot = await api().Bootstrap(); S.sessions = S.boot.sessions; S.projects = S.boot.projects; S.live = {}; toast("Using the default folder"); return render(); }
   }
 }

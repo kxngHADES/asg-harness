@@ -4,10 +4,16 @@
 #   desktop/build/package.sh <windows|darwin|linux> "<arch...>" <version> <outdir>
 #
 #   windows "amd64 arm64"  -> asg-desktop_windows_<arch>.zip   (exe with icon + manifest)
+#                             asg-setup_windows_<arch>.exe     (setup wizard, not zipped)
 #   darwin  universal      -> asg-desktop_darwin_universal.zip (ASG.app, arm64 + amd64)
+#                             asg-setup_darwin_universal.dmg   (disk image with "ASG Setup.app")
 #   linux   amd64          -> asg-desktop_linux_<arch>.tar.gz  (binary, icon, .desktop file)
+#                             asg-setup_linux_<arch>           (setup wizard, a plain binary)
 #
-# Each archive gets a <archive>.sha256 next to it. Run it on the target OS:
+# The setup wizard (desktop/installer) embeds the app it installs: each
+# build packs the app into installer/payload/app.tar.gz first.
+#
+# Each file gets a <file>.sha256 next to it. Run it on the target OS:
 # macOS and Linux builds need cgo (Xcode command line tools; libgtk-3-dev and
 # libwebkit2gtk-4.1-dev). Windows needs no C toolchain.
 set -euo pipefail
@@ -22,13 +28,21 @@ desk=$(dirname "$here")
 mkdir -p "$out"
 out=$(cd "$out" && pwd)
 work=$(mktemp -d)
-trap 'rm -rf "$work"; rm -f "$desk"/rsrc_windows_*.syso' EXIT
+inst=$desk/installer
+trap 'rm -rf "$work"; rm -f "$desk"/rsrc_windows_*.syso "$inst"/rsrc_windows_*.syso "$inst/payload/app.tar.gz"' EXIT
 
 ldflags="-s -w -X main.version=$version"
 num=${version#v}
 [[ $num =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || num=0.0.0
 
 sum() { (cd "$out" && { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1"; } >"$1.sha256"); }
+
+# payload <dir> <entries...>: pack the built app for the setup wizard to embed.
+payload() {
+  local dir=$1
+  shift
+  COPYFILE_DISABLE=1 tar -C "$dir" -czf "$inst/payload/app.tar.gz" "$@"
+}
 
 cd "$desk"
 case $os in
@@ -38,6 +52,10 @@ windows)
     --arch "$(echo "$archs" | tr ' ' ',')" --icon build/appicon.png --manifest gui \
     --product-name ASG --file-description "ASG desktop" \
     --product-version "$num.0" --file-version "$num.0" --original-filename asg-desktop.exe
+  (cd "$inst" && go run github.com/tc-hib/go-winres@v0.3.3 simply \
+    --arch "$(echo "$archs" | tr ' ' ',')" --icon ../build/appicon.png --manifest gui \
+    --product-name "ASG Setup" --file-description "ASG setup" \
+    --product-version "$num.0" --file-version "$num.0" --original-filename asg-setup.exe)
   for arch in $archs; do
     mkdir -p "$work/$arch"
     CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -tags desktop,production \
@@ -49,6 +67,12 @@ windows)
       powershell -NoProfile -Command "Compress-Archive -Force -Path '$(cygpath -w "$work/$arch/asg-desktop.exe" 2>/dev/null || echo "$work/$arch/asg-desktop.exe")' -DestinationPath '$(cygpath -w "$out/$name" 2>/dev/null || echo "$out/$name")'"
     fi
     sum "$name"
+
+    payload "$work/$arch" asg-desktop.exe
+    setup=asg-setup_windows_$arch.exe
+    CGO_ENABLED=0 GOOS=windows GOARCH=$arch go build -trimpath -tags desktop,production \
+    -ldflags "$ldflags -H windowsgui" -o "$out/$setup" ./installer
+    sum "$setup"
   done
   ;;
 
@@ -98,6 +122,28 @@ PLIST
   name=asg-desktop_darwin_universal.zip
   (cd "$work" && ditto -c -k --sequesterRsrc --keepParent ASG.app "$out/$name")
   sum "$name"
+
+  # Setup wizard: "ASG Setup.app" around the app, shipped as a .dmg.
+  payload "$work" ASG.app
+  slices=()
+  for arch in arm64 amd64; do
+    cc=$([ $arch = amd64 ] && echo x86_64 || echo arm64)
+    GOOS=darwin GOARCH=$arch CC="clang -arch $cc" go build -trimpath -tags desktop,production \
+    -ldflags "$ldflags" -o "$work/asg-setup-$arch" ./installer
+    slices+=("$work/asg-setup-$arch")
+  done
+  sapp="$work/dmg/ASG Setup.app/Contents"
+  mkdir -p "$sapp/MacOS" "$sapp/Resources"
+  lipo -create -output "$sapp/MacOS/asg-setup" "${slices[@]}"
+  cp "$app/Resources/iconfile.icns" "$sapp/Resources/iconfile.icns"
+  sed -e 's/<string>ASG<\/string>/<string>ASG Setup<\/string>/g' \
+    -e 's/com.kxnghades.asg.desktop/com.kxnghades.asg.setup/' \
+    -e 's/<string>asg-desktop<\/string>/<string>asg-setup<\/string>/' \
+    "$app/Info.plist" >"$sapp/Info.plist"
+  codesign --force --deep --sign - "$work/dmg/ASG Setup.app"
+  setup=asg-setup_darwin_universal.dmg
+  hdiutil create -volname "ASG Setup" -srcfolder "$work/dmg" -ov -format UDZO "$out/$setup" >/dev/null
+  sum "$setup"
   ;;
 
 linux)
@@ -124,6 +170,13 @@ DESK
     name=asg-desktop_linux_$arch.tar.gz
     tar -C "$work" -czf "$out/$name" "asg-desktop_linux_$arch"
     sum "$name"
+
+    payload "$dir" asg-desktop asg-desktop.png
+    setup=asg-setup_linux_$arch
+    CGO_ENABLED=1 GOOS=linux GOARCH=$arch go build -trimpath -tags "$tags" \
+    -ldflags "$ldflags" -o "$out/$setup" ./installer
+    chmod +x "$out/$setup"
+    sum "$setup"
   done
   ;;
 
