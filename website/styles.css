@@ -309,7 +309,7 @@ html:not(.js) .title__layer { transform: none; }
 .piece--crab { grid-column: 5 / span 3; grid-row: 4 / span 2; --rot: 6deg; display: grid; place-items: center; gap: 8px; padding: 22px; border-radius: 50%; aspect-ratio: 1; align-self: center; margin: -30px 0 0 -40px; background: var(--night); }
 .piece--crab img { width: 70%; height: auto; image-rendering: pixelated; }
 .piece--crab figcaption { font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; color: var(--lime); }
-.piece--domains { grid-column: 1 / span 4; grid-row: 4 / span 3; --rot: 1.2deg; margin-top: 30px; border-top: 6px solid var(--magenta); }
+.piece--domains { grid-column: 1 / span 4; grid-row: 4 / span 3; --rot: 1.2deg; margin-top: 30px; border-radius: 0; border-top: 6px solid var(--magenta); }
 .piece--work { grid-column: 8 / span 5; grid-row: 5 / span 3; --rot: -1.4deg; margin-top: 60px; }
 .piece--memory { grid-column: 4 / span 4; grid-row: 6 / span 3; --rot: 2.4deg; margin-top: 70px; background: var(--cyan); color: #121510; }
 .piece--memory p { color: #1c3a40; } .piece--memory code { background: rgb(18 21 16 / .1); }
