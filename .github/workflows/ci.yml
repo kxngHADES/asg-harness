@@ -60,6 +60,12 @@ jobs:
           - { runner: macos-latest, os: darwin, arch: universal }
           - { runner: ubuntu-24.04, os: linux, arch: amd64 }
     runs-on: ${{ matrix.runner }}
+    env:
+      # Ubuntu 24.04 only ships webkit2gtk-4.1; Wails needs the tag to use it.
+      EXTRA_TAGS: ${{ matrix.os == 'linux' && ',webkit2_41' || '' }}
+      # Wails' macOS file dialogs use UTType (macOS 11+).
+      CGO_LDFLAGS: ${{ matrix.os == 'darwin' && '-framework UniformTypeIdentifiers -mmacosx-version-min=11.0' || '' }}
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os == 'darwin' && '11.0' || '' }}
     defaults:
       run:
         shell: bash
@@ -77,10 +83,10 @@ jobs:
         run: go mod tidy && git diff --exit-code go.mod go.sum
       - name: Vet
         working-directory: desktop
-        run: go vet -tags desktop,production . && go vet -tags devserve .
+        run: go vet -tags "desktop,production$EXTRA_TAGS" . && go vet -tags "devserve$EXTRA_TAGS" .
       - name: Test
         working-directory: desktop
-        run: go test -tags desktop,production .
+        run: go test -tags "desktop,production$EXTRA_TAGS" .
       - name: Package (same script as the release)
         run: bash desktop/build/package.sh ${{ matrix.os }} "${{ matrix.arch }}" dev dist-desktop
 

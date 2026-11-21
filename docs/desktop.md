@@ -32,9 +32,11 @@ draws its own minimise / maximise / close buttons.
 cd desktop
 # Windows (needs the WebView2 runtime, which Windows 10/11 ship with)
 go build -tags desktop,production -ldflags "-H windowsgui -s -w" -o asg-desktop.exe .
-# macOS / Linux (Linux needs libgtk-3 and libwebkit2gtk-4.0/4.1 dev packages)
-go build -tags desktop,production -ldflags "-s -w" -o asg-desktop .
-go test -tags desktop,production .
+# macOS 11+ (Xcode command line tools)
+CGO_LDFLAGS="-framework UniformTypeIdentifiers" go build -tags desktop,production -ldflags "-s -w" -o asg-desktop .
+# Linux (libgtk-3-dev + libwebkit2gtk-4.1-dev; drop ",webkit2_41" if you only have webkit2gtk-4.0)
+go build -tags desktop,production,webkit2_41 -ldflags "-s -w" -o asg-desktop .
+go test -tags desktop,production .   # same tags / CGO_LDFLAGS as the build on macOS and Linux
 ```
 
 `make desktop` does the same from the repo root. `make desktop-package` builds the same

@@ -73,6 +73,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+      # Ubuntu 24.04 only ships webkit2gtk-4.1; Wails needs the tag to use it.
+      EXTRA_TAGS: ${{ matrix.os == 'linux' && ',webkit2_41' || '' }}
+      # Wails' macOS file dialogs use UTType (macOS 11+).
+      CGO_LDFLAGS: ${{ matrix.os == 'darwin' && '-framework UniformTypeIdentifiers -mmacosx-version-min=11.0' || '' }}
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os == 'darwin' && '11.0' || '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,7 +91,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
       - name: Test
         working-directory: desktop
-        run: go test -tags desktop,production .
+        shell: bash
+        run: go test -tags "desktop,production$EXTRA_TAGS" .
       - name: Build and package
         shell: bash
         run: bash desktop/build/package.sh ${{ matrix.os }} "${{ matrix.arch }}" "$TAG" dist-desktop
