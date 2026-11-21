@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "nested-cards",
+        "value": "*",
+        "files": [
+          "website/index.html"
+        ],
+        "createdAt": "2026-11-21T18:25:48.062Z",
+        "reason": "assistant judgment: user requested neumorphism; raised tiles in pressed wells and terminal mocks inside mode cards are the intended neumorphic pattern"
+      }
+    ]
+  }
+}
