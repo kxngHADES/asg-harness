@@ -137,6 +137,10 @@ type Session struct {
 	// pendingImages are images returned by tools this round, shown to the
 	// model after the tool results.
 	pendingImages []llm.Image
+
+	// Instructions are extra system-prompt text for this session only, such
+	// as a desktop project's instructions.
+	Instructions string
 }
 
 func (a *App) NewSession() *Session {
@@ -206,6 +210,9 @@ Keep answers concise and use Markdown. When you change files, say what you chang
 	if cfg.SystemPrompt != "" {
 		b.WriteString("\n" + cfg.SystemPrompt + "\n")
 	}
+	if s.Instructions != "" {
+		b.WriteString("\n" + strings.TrimSpace(s.Instructions) + "\n")
+	}
 	b.WriteString(s.Track.instructions())
 	b.WriteString(mode.instructions())
 	if s.Work != nil && extra == "" && !mode.ReadOnly() {
@@ -248,6 +255,9 @@ func (s *Session) skillTool() *tools.Tool {
 
 // SkillPrompt renders a skill's instructions for the model.
 func SkillPrompt(sk *skills.Skill) string {
+	if sk.Dir == "" { // built-in: no folder on disk
+		return fmt.Sprintf("# Skill: %s\n\n%s", sk.Name, sk.Body)
+	}
 	return fmt.Sprintf("# Skill: %s\n(Skill files live in %s — read any referenced files from there.)\n\n%s", sk.Name, sk.Dir, sk.Body)
 }
 

@@ -32,6 +32,7 @@ type Skill struct {
 	Dir         string `json:"dir"`
 	Body        string `json:"-"`
 	Source      string `json:"source,omitempty"`
+	Builtin     bool   `json:"builtin,omitempty"` // ships inside the binary; Dir is empty
 }
 
 type Manager struct {
@@ -64,6 +65,13 @@ func (m *Manager) List() []*Skill {
 			}
 			seen[s.Name] = true
 			out = append(out, s)
+		}
+	}
+	// Built-ins come last, so a user skill with the same name replaces one.
+	for _, b := range Builtins() {
+		if !seen[b.Name] {
+			seen[b.Name] = true
+			out = append(out, b)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -132,6 +140,9 @@ func (m *Manager) Remove(name string) error {
 	s := m.Get(name)
 	if s == nil {
 		return fmt.Errorf("skill %q not found", name)
+	}
+	if s.Builtin {
+		return fmt.Errorf("%q is a built-in skill and can't be removed; create a skill with the same name to replace it", name)
 	}
 	return os.RemoveAll(s.Dir)
 }

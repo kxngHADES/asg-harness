@@ -15,6 +15,7 @@ examples for each way of working.
 | [Permissions and YOLO](permissions.md) | Approval gates, "always allow", and running without asking |
 | [Command reference](commands.md) | Every slash command and key on one page |
 | [Command line and config](cli-and-config.md) | `asg` flags, one-shot and unattended runs, `~/.asg/config.json` |
+| [Desktop app](desktop.md) | The windowed app: saved sessions, projects, resumable coding sessions, artifacts, schedules, and where it stores everything |
 
 ## The two ideas to know first
 

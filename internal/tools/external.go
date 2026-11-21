@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kxngHADES/asg-harness/internal/proc"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -137,6 +138,7 @@ func runScript(ctx context.Context, dir string, command []string, args json.RawM
 		argv[i] = strings.ReplaceAll(a, "{dir}", dir)
 	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	proc.Hide(cmd)
 	cmd.Stdin = bytes.NewReader(args)
 	cmd.Env = append(os.Environ(), "ASG_TOOL_ARGS="+string(args), "ASG_TOOL_DIR="+dir)
 	var stdout, stderr bytes.Buffer

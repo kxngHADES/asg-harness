@@ -5,3 +5,9 @@
 *.out
 .DS_Store
 .asg/work/
+/desktop/asg-desktop
+/desktop/asg-desktop.exe
+/desktop/devserve.exe
+/desktop/*.syso
+/dist-desktop/
+/desktop/*.exe~
