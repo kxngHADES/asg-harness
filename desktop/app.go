@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -43,6 +44,13 @@ type App struct {
 
 	schedMu  sync.Mutex
 	stopTick chan struct{}
+
+	// Updates (updater.go) and the tray icon (tray.go).
+	upd      updater
+	stopUpd  chan struct{}
+	tray     *trayItems
+	trayOn   atomic.Bool
+	quitting atomic.Bool
 
 	// Hooks replace the Wails runtime when the UI is served for development
 	// (devserve.go): events go to the browser and folder picks come from it.
@@ -75,7 +83,38 @@ func (a *App) startup(ctx context.Context) {
 		_ = a.store.Init()
 	}
 	a.startScheduler()
+	a.stopUpd = make(chan struct{})
+	a.startUpdateChecks()
+	if ctx != nil { // nil when served for development (devserve.go)
+		a.startTray()
+	}
 }
+
+// beforeClose keeps ASG running in the tray when the window is closed,
+// unless the user turned that off or chose Quit.
+func (a *App) beforeClose(context.Context) bool {
+	a.setMu.Lock()
+	quitOnClose := a.settings.QuitOnClose
+	a.setMu.Unlock()
+	if a.quitting.Load() || quitOnClose || !a.trayOn.Load() {
+		return false
+	}
+	wruntime.WindowHide(a.ctx)
+	return true
+}
+
+// SetQuitOnClose saves whether closing the window quits ASG (true) or keeps
+// it in the tray (false).
+func (a *App) SetQuitOnClose(quit bool) error {
+	a.setMu.Lock()
+	a.settings.QuitOnClose = quit
+	s := a.settings
+	a.setMu.Unlock()
+	return saveSettings(s)
+}
+
+// QuitApp quits ASG even when it would normally stay in the tray.
+func (a *App) QuitApp() { a.quitApp() }
 
 func (a *App) shutdown(context.Context) {
 	a.mu.Lock()
@@ -90,6 +129,10 @@ func (a *App) shutdown(context.Context) {
 	if a.stopTick != nil {
 		close(a.stopTick)
 	}
+	if a.stopUpd != nil {
+		close(a.stopUpd)
+	}
+	a.stopTray()
 }
 
 func (a *App) emit(name string, data any) {
@@ -135,6 +178,7 @@ type Boot struct {
 	User         string        `json:"user"`
 	CrabIdle     string        `json:"crab_idle"`
 	CrabWork     string        `json:"crab_work"`
+	Tray         bool          `json:"tray"` // a tray icon is showing (Windows, Linux)
 }
 
 func (a *App) Bootstrap() Boot {
@@ -150,7 +194,7 @@ func (a *App) Bootstrap() Boot {
 		Settings: st, DataDir: a.store.Dir(), DataFallback: !samePath(a.store.Dir(), st.DataDir),
 		Home: home, Sessions: a.store.ListSessions(), Projects: a.store.Projects(),
 		Model: a.modelInfo(), HighlightCSS: HighlightCSS(), OS: runtime.GOOS, Version: version, User: user,
-		CrabIdle: sprite.SVG(sprite.Idle, 140, 3), CrabWork: sprite.SVG(sprite.Work, 110, 3),
+		CrabIdle: sprite.SVG(sprite.Idle, 140, 3), CrabWork: sprite.SVG(sprite.Work, 110, 3), Tray: a.trayOn.Load(),
 	}
 }
 

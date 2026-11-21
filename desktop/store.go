@@ -34,6 +34,12 @@ const (
 type Settings struct {
 	DataDir string `json:"data_dir"`
 	Theme   string `json:"theme"` // system | light | dark
+	// QuitOnClose: closing the window quits instead of keeping ASG in the tray.
+	QuitOnClose bool `json:"quit_on_close,omitempty"`
+	// SkipUpdateCheck turns off the automatic check for new versions.
+	SkipUpdateCheck bool `json:"skip_update_check,omitempty"`
+	// SkippedVersion is a release the user chose not to be reminded about.
+	SkippedVersion string `json:"skipped_version,omitempty"`
 }
 
 func settingsPath() string { return filepath.Join(config.Dir(), "desktop.json") }

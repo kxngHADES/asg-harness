@@ -6,6 +6,7 @@ replace github.com/kxngHADES/asg-harness => ../
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
+	github.com/energye/systray v1.0.3
 	github.com/go-ole/go-ole v1.3.0
 	github.com/kxngHADES/asg-harness v0.2.0
 	github.com/wailsapp/wails/v2 v2.17.1

@@ -101,13 +101,42 @@ a browser prompt there. Set `ASG_HOME` to a scratch folder to keep test data apa
 | **Artifacts** | Every file a session wrote (`write_file`, `office_document`) is snapshotted, so it survives the original being changed or deleted. Writing the same file again adds a version. Pages and SVGs preview live (HTML runs in a sandboxed frame), Markdown renders, code is highlighted; Office files open in their own app. Coding sessions only keep documents and images, not every source file. |
 | **Schedules** | A prompt that runs every N minutes, hourly, daily, on weekdays or weekly. Each run is its own session (clock icon). Runs only while the app is open; a run missed while it was closed runs once on the next start. Nobody can answer a permission prompt during a scheduled run, so gated tools are skipped unless you turn on **Allow tools**. |
 | **Customise** | Providers and models, global instructions, skills (create / import / remove; the built-in `/design-first-dev` and `/frontend-design` are tagged **Built-in**), tools, memory notes, and behaviour (auto-approve, tool rounds, self-review passes, temperature). |
-| **Settings** | Theme, and **Storage & sandbox** (below). |
+| **Settings** | Theme, the tray, **Updates** and **Storage & sandbox** (below). |
 
 Session icons: speech bubble = chat, terminal = code, sparkles = artifact, folder = project
 chat, clock = scheduled run.
 
 Keys: `Ctrl+N` new chat · `Ctrl+K` search and jump · `Ctrl+B` sidebar · `Enter` send ·
 `Shift+Enter` new line · `Esc` close.
+
+## Updates
+
+**Settings → Updates** shows the installed version and checks the latest
+[GitHub release](https://github.com/kxngHADES/asg-harness/releases/latest). If it is newer you
+see the release notes and choose what to do: **Update and restart**, **Skip this version**, or
+open the release page. Nothing is downloaded or installed until you choose to update.
+
+Updating downloads the archive for your platform (`asg-desktop_<os>_<arch>.zip` / `.tar.gz`),
+checks it against its `.sha256`, replaces the app in place (the `.exe`, the binary, or `ASG.app`
+on macOS) and restarts. Sessions, settings, memory and `config.json` are untouched. Running
+sessions must finish first. If ASG can't write to its install folder (for example an
+administrator install), it says so and links to the setup wizard instead. Development builds
+(`version` = `dev`) can't update themselves.
+
+ASG also checks on its own shortly after start and twice a day and shows a notice when a version
+is out. Turn that off with **Check for updates automatically**.
+
+## Tray icon
+
+On Windows and Linux ASG puts the crab in the notification area / system tray. Click it to open
+the window; right-click it for **Open ASG**, **New chat**, **Schedules**, **Check for updates…**
+(it reads **Update to vX…** when one is out), **Settings** and **Quit ASG**.
+
+Closing the window keeps ASG running in the tray, so schedules keep running. To quit, use
+**Quit ASG** from the tray, or turn off **Settings → Appearance → Keep running in the tray when I
+close the window**. On Linux the tray needs a StatusNotifierItem host (KDE, or GNOME with the
+AppIndicator extension); without one there is no icon and closing the window quits. macOS has no
+tray icon: use the Dock.
 
 ## Storage and the sandbox
 

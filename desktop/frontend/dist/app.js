@@ -74,6 +74,7 @@ const S = {
   skills: null,
   custTab: "model",
   setTab: "storage",
+  update: { info: null, checking: false, installing: false, progress: null, error: "" },
 };
 
 // ---------- boot ----------
@@ -97,6 +98,20 @@ window.addEventListener("DOMContentLoaded", async () => {
   rt().EventsOn("asg:schedules", () => { if (S.view.name === "schedules") renderView(); });
   rt().EventsOn("asg:model", (m) => { S.model = m; $$(".chip.model .ellip").forEach((el) => (el.textContent = modelLabel())); });
   rt().EventsOn("asg:toast", (t) => toast(t.text, "", t.session ? { label: "Open", fn: () => openSession(t.session) } : null));
+  // Tray menu: open a view (and maybe run an update check).
+  rt().EventsOn("asg:nav", (n) => {
+    if (n.view === "settings" && n.tab) S.setTab = n.tab;
+    if (n.view === "home") S.home.kind = "chat";
+    nav(n.view);
+    if (n.check) checkUpdate();
+  });
+  // A newer version is out: tell the user, never install on our own.
+  rt().EventsOn("asg:update-available", (info) => {
+    S.update.info = info;
+    toast(`ASG ${info.latest} is available`, "", { label: "View", fn: () => { S.setTab = "updates"; nav("settings"); } });
+    if (S.view.name === "settings" && S.setTab === "updates") renderSetBody();
+  });
+  rt().EventsOn("asg:update-progress", (p) => { S.update.progress = p; drawUpdateProgress(); });
 
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => applyTheme(S.boot.settings.theme));
   document.addEventListener("keydown", onKey);
@@ -1292,7 +1307,7 @@ async function chooseModel(provider) {
 
 // ---------- settings ----------
 function viewSettings(el) {
-  const tabs = [["storage", "drive", "Storage & sandbox"], ["appearance", "sun", "Appearance"], ["about", "info", "About"]];
+  const tabs = [["storage", "drive", "Storage & sandbox"], ["appearance", "sun", "Appearance"], ["updates", "refresh", "Updates"], ["about", "info", "About"]];
   el.innerHTML = `<div class="scroll"><div class="page">
     <div class="page-head"><div><h1>Settings</h1><p>Where things live and how the app looks.</p></div></div>
     <div class="split"><nav class="subnav">${tabs.map(([k, ic, l]) => `<button class="${S.setTab === k ? "on" : ""}" data-settab="${k}">${icon(ic)}${l}</button>`).join("")}</nav><div id="set-body"></div></div>
@@ -1312,9 +1327,13 @@ async function renderSetBody() {
       <button class="${cur === "dark" ? "on" : ""}" data-theme-set="dark">${sw("#121211", "#20201d", "#c6f432")}<span>${icon("moon", "sm")} Dark</span></button>
     </div></div>
     <div class="section"><h3>Session icons</h3><p>Every session wears its kind, so you can tell them apart at a glance.</p>
-      <div class="list-box">${Object.entries(KINDS).map(([k, v]) => `<div class="li" style="align-items:center">${kindChip(k)}<div class="t"><b style="font-family:var(--font)">${v.label}</b><span>${{ chat: "General chat in a private sandbox folder", code: "Works in a folder you pick; resumable from Code", artifact: "Made to produce a file — page, doc, diagram, data", project: "A chat inside a project, with its instructions", scheduled: "Started automatically by a schedule" }[k]}</span></div></div>`).join("")}</div></div>`;
+      <div class="list-box">${Object.entries(KINDS).map(([k, v]) => `<div class="li" style="align-items:center">${kindChip(k)}<div class="t"><b style="font-family:var(--font)">${v.label}</b><span>${{ chat: "General chat in a private sandbox folder", code: "Works in a folder you pick; resumable from Code", artifact: "Made to produce a file — page, doc, diagram, data", project: "A chat inside a project, with its instructions", scheduled: "Started automatically by a schedule" }[k]}</span></div></div>`).join("")}</div></div>
+    ${S.boot.tray ? `<div class="section"><h3>Window</h3><p>ASG has an icon in the ${S.boot.os === "windows" ? "notification area (system tray)" : "system tray"}. Click it to open the window; right-click it for New chat, Schedules, updates, Settings and Quit.</p>
+      <div class="setting"><div class="t"><b>Keep running in the tray when I close the window</b><span>Schedules keep running in the background. Choose <b style="display:inline">Quit ASG</b> from the tray icon to close it completely.</span></div><button class="switch ${S.boot.settings.quit_on_close ? "" : "on"}" data-act="toggle-tray" title="${S.boot.settings.quit_on_close ? "Off" : "On"}"></button></div>
+      <div class="setting"><div class="t"><b>Quit now</b><span>Closes ASG and its tray icon. Running sessions are stopped.</span></div><button class="btn" data-act="quit-app">Quit ASG</button></div></div>` : ""}`;
     return;
   }
+  if (S.setTab === "updates") { box.innerHTML = updatesHTML(); return; }
   if (S.setTab === "about") {
     box.innerHTML = `<div class="section"><h3>ASG desktop <span class="pill" style="font:500 11.5px var(--mono);vertical-align:middle">${esc(S.boot.version || "dev")}</span></h3><p>The same agent as the <code>asg</code> terminal app, with sessions, projects, artifacts and schedules.</p>
       <div class="setting"><div class="t"><b>Shared config</b><span class="selectable" style="font-family:var(--mono)">${esc((await api().Storage()).config)}</span></div></div>
@@ -1339,6 +1358,82 @@ async function renderSetBody() {
   <div class="section"><h3>Sandbox</h3><p>Chats that aren't tied to a folder get their own sandbox: a private folder inside the data folder above. Shell commands, files and downloads land there, never in your real projects. Coding sessions and projects with a folder work in that folder instead, and anything that changes files or runs commands asks first.</p>
     <div class="setting"><div class="t"><b>Sandbox folders</b><span class="selectable" style="font-family:var(--mono)">${esc(st.data_dir)}${S.boot.os === "windows" ? "\\" : "/"}sandbox</span></div><button class="btn sm" data-reveal-dir="${esc(st.data_dir + (S.boot.os === "windows" ? "\\" : "/") + "sandbox")}">${icon("folderOpen")}Open</button></div>
   </div>`;
+}
+
+// ---------- updates ----------
+function updatesHTML() {
+  const u = S.update, i = u.info, cur = S.boot.version || "dev";
+  const auto = !S.boot.settings.skip_update_check;
+  let status;
+  if (u.installing) {
+    status = `<div class="update-card"><div class="t"><b>Updating to ${esc(i?.latest)}…</b><span id="upd-stage">Starting…</span></div><div class="upd-bar"><i id="upd-fill"></i></div></div>`;
+  } else if (u.checking) {
+    status = `<div class="update-card"><div class="t"><b>Checking GitHub for a newer version…</b></div></div>`;
+  } else if (u.error) {
+    status = `<div class="warnbox">${icon("alert", "sm")}<span>${esc(u.error)}</span></div>`;
+  } else if (i && i.available) {
+    const when = i.published ? new Date(i.published).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+    status = `<div class="update-card avail"><div class="t"><b>ASG ${esc(i.latest)} is available</b><span>You have ${esc(cur)}${when ? ` · released ${esc(when)}` : ""}${i.size ? ` · ${bytes(i.size)} download` : ""}${i.skipped ? " · you skipped this version" : ""}</span></div></div>
+      ${i.can_install ? "" : `<div class="warnbox">${icon("alert", "sm")}<span>${esc(i.reason)}</span></div>`}
+      <div class="upd-actions">
+        ${i.can_install ? `<button class="btn primary" data-act="install-update">${icon("download")}Update and restart</button>` : `<button class="btn primary" data-act="open-release">${icon("external")}Download from GitHub</button>`}
+        ${i.can_install ? `<button class="btn ghost" data-act="open-release">${icon("external")}Release page</button>` : ""}
+        ${i.skipped ? "" : `<button class="btn ghost" data-act="skip-update">Skip this version</button>`}
+      </div>
+      ${i.notes_html ? `<details class="upd-notes"><summary>What's new in ${esc(i.latest)}</summary><div class="md selectable">${i.notes_html}</div></details>` : ""}`;
+  } else if (i) {
+    status = `<div class="update-card ok"><div class="t"><b>${i.dev ? "Development build" : "You're up to date"}</b><span>${i.dev ? `This copy was built from source, so it can't update itself. The latest release is ${esc(i.latest)}.` : `${esc(cur)} is the latest version.`}</span></div></div>`;
+  } else {
+    status = "";
+  }
+  return `<div class="section"><h3>Version</h3><p>ASG checks GitHub for new releases. Nothing is downloaded or installed until you choose <b>Update and restart</b> — your sessions, settings and memory are kept.</p>
+    <div class="setting"><div class="t"><b>Installed version</b><span style="font-family:var(--mono)">${esc(cur)}</span></div><button class="btn" data-act="check-update" ${u.checking || u.installing ? "disabled" : ""}>${icon("refresh")}Check for updates</button></div>
+    <div id="upd-status">${status}</div>
+    ${i?.checked && !u.checking ? `<p class="hint" style="font-size:12px;color:var(--faint);margin:10px 0 0">Last checked ${esc(rel(i.checked))}</p>` : ""}
+  </div>
+  <div class="section"><h3>Automatic checks</h3>
+    <div class="setting"><div class="t"><b>Check for updates automatically</b><span>When ASG starts and twice a day. You'll get a notice when a new version is out; it is never installed without asking.</span></div><button class="switch ${auto ? "on" : ""}" data-act="toggle-autoupdate" title="${auto ? "On" : "Off"}"></button></div>
+  </div>`;
+}
+
+function rerenderUpdates() { if (S.view.name === "settings" && S.setTab === "updates") renderSetBody(); }
+
+async function checkUpdate() {
+  if (S.update.checking || S.update.installing) return;
+  S.update.checking = true; S.update.error = "";
+  rerenderUpdates();
+  try { S.update.info = await api().CheckUpdate(); }
+  catch (e) { S.update.error = errText(e); }
+  S.update.checking = false;
+  rerenderUpdates();
+}
+
+async function installUpdate() {
+  const i = S.update.info;
+  if (!i) return;
+  if (!(await confirmBox(`Update to ${i.latest}?`, `ASG downloads ${i.latest}, checks it, replaces this version and restarts. Your sessions, settings and memory are kept. Any running session must be finished first.`, "Update and restart"))) return;
+  S.update.installing = true; S.update.progress = null; S.update.error = "";
+  rerenderUpdates();
+  try {
+    await api().InstallUpdate();
+    S.update.progress = { stage: "restart" };
+    drawUpdateProgress();
+  } catch (e) {
+    S.update.installing = false;
+    S.update.error = errText(e);
+    rerenderUpdates();
+  }
+}
+
+function drawUpdateProgress() {
+  const p = S.update.progress, st = $("#upd-stage"), fill = $("#upd-fill");
+  if (!p || !st || !fill) return;
+  if (p.stage === "download") {
+    const pct = p.total ? Math.min(100, Math.round((p.done / p.total) * 100)) : 0;
+    st.textContent = p.total ? `Downloading… ${bytes(p.done)} of ${bytes(p.total)} (${pct}%)` : `Downloading… ${bytes(p.done)}`;
+    fill.style.width = `${pct}%`;
+  } else if (p.stage === "install") { st.textContent = "Checked. Installing…"; fill.style.width = "100%"; }
+  else if (p.stage === "restart") { st.textContent = "Installed. Restarting ASG…"; fill.style.width = "100%"; }
 }
 
 async function changeData(move) {
@@ -1662,6 +1757,13 @@ async function onGlobalClick(e) {
     });
     case "move-data": return changeData(true);
     case "use-data": return changeData(false);
+    case "check-update": return checkUpdate();
+    case "install-update": return installUpdate();
+    case "open-release": return api().OpenURL(S.update.info?.url || "https://github.com/kxngHADES/asg-harness/releases/latest");
+    case "skip-update": await call("SkipUpdate", S.update.info.latest); S.update.info.skipped = true; S.boot.settings.skipped_version = S.update.info.latest; toast(`You won't be reminded about ${S.update.info.latest}`); return renderSetBody();
+    case "toggle-autoupdate": { const on = !!S.boot.settings.skip_update_check; await call("SetUpdatePrefs", on); S.boot.settings.skip_update_check = !on; return renderSetBody(); }
+    case "toggle-tray": { const quit = !S.boot.settings.quit_on_close; await call("SetQuitOnClose", quit); S.boot.settings.quit_on_close = quit; return renderSetBody(); }
+    case "quit-app": return api().QuitApp();
     case "memory-dir": { const prev = (await api().Memory()).dir; const m = await call("ChangeMemoryDir"); if (m.dir !== prev) toast(`Memory now in ${m.dir}`); return renderSetBody(); }
     case "memory-reset": { await call("ResetMemoryDir"); toast("Memory back in the default folder"); return renderSetBody(); }
     case "reset-data": { await call("ResetDataDir"); S.boot = await api().Bootstrap(); S.sessions = S.boot.sessions; S.projects = S.boot.projects; S.live = {}; toast("Using the default folder"); return render(); }
