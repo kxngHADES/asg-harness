@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/kxngHADES/asg-harness/compare/v0.2.0...v0.3.0) (2026-11-21)
+
+
+### Features
+
+* add the ASG desktop app and built-in skills ([#16](https://github.com/kxngHADES/asg-harness/issues/16)) ([ebf59b1](https://github.com/kxngHADES/asg-harness/commit/ebf59b1b4e0289f0aeed8b804e61b8c64eee6e12))
+
 ## [0.2.0](https://github.com/kxngHADES/asg-harness/compare/v0.1.6...v0.2.0) (2026-11-19)
 
 
