@@ -42,7 +42,17 @@ Go version comes from `go.mod` (CI uses `go-version-file`).
   streaming adapters.
 - `internal/tools` — built-in tools and external script tools (`tools/README.md`).
 - `internal/dashboard` — HTTP server plus the embedded web UI.
+- `desktop/` — the desktop app (separate Go module, Wails v2, plain HTML/CSS/JS UI in
+  `desktop/frontend/dist`): persisted sessions, projects, coding sessions, artifacts,
+  schedules. See [docs/desktop.md](docs/desktop.md). Build/test with `make desktop` /
+  `make desktop-test`; `go test ./...` at the root does not include it. CI's `desktop` job
+  tests and packages it on Windows/macOS/Linux, and the release's `publish-desktop` job
+  attaches `asg-desktop_*` archives built by `desktop/build/package.sh`.
+- `internal/proc` — `proc.Hide` keeps child processes from flashing a console window when
+  the parent is the GUI app; use it for every `exec.Command` a tool runs.
 - `internal/config` — `~/.asg/config.json` (override the folder with `ASG_HOME`).
+- `internal/skills/builtin/<name>/SKILL.md` — skills embedded in the binary and listed
+  after the user's (a user skill with the same name wins; built-ins can't be removed).
 - `internal/perms`, `internal/memory`, `internal/skills`, `internal/media`,
   `internal/audio`, `internal/sprite` (pixel crab; `UPDATE_SPRITES=1 go test
   ./internal/sprite/` refreshes the SVGs in `docs/`), `internal/markdown` (a small

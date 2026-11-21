@@ -45,7 +45,13 @@ func TestImportLocalTree(t *testing.T) {
 	if err != nil || len(got) != 2 {
 		t.Fatalf("import: %v %v", got, err)
 	}
-	if len(m.List()) != 2 || m.Get("b") == nil {
+	installed := 0
+	for _, s := range m.List() {
+		if !s.Builtin {
+			installed++
+		}
+	}
+	if installed != 2 || m.Get("b") == nil {
 		t.Fatalf("list: %v", m.List())
 	}
 	if err := m.Remove("a"); err != nil || m.Get("a") != nil {

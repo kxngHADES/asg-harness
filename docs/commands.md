@@ -87,6 +87,11 @@
 | `/skill add <src>` | import a skill (path, URL, `github:owner/repo[/path]`) |
 | `/skill rm <name>`, `/skill show <name>` | remove / show a skill |
 | `/<skill-name> [request]` | run a skill |
+
+Two skills ship with ASG: `/design-first-dev` (design diagrams first, wait for approval,
+build skeleton-first, then tests, docs and a security check) and `/frontend-design`
+(distinctive visual direction for UI work). They can't be removed, but a skill of your
+own with the same name in `~/.asg/skills` replaces the built-in one.
 | `/memory` | browse memories |
 | `/memory <note>` | ask ASG to remember something |
 | `/permissions` | review and revoke "always allow" rules |

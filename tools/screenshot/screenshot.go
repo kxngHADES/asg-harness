@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/kxngHADES/asg-harness/internal/proc"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -199,6 +200,7 @@ func capturePage(ctx context.Context, u, out string, w, h int) error {
 		"--headless=new", "--disable-gpu", "--hide-scrollbars", "--no-first-run", "--no-default-browser-check",
 		"--allow-file-access-from-files", "--user-data-dir="+profile, "--virtual-time-budget=4000",
 		fmt.Sprintf("--window-size=%d,%d", w, h), "--screenshot="+out, u)
+	proc.Hide(cmd)
 	msg, err := cmd.CombinedOutput()
 	if _, serr := os.Stat(out); serr == nil {
 		return nil // browsers often exit non-zero after writing the file
@@ -232,6 +234,7 @@ func captureScreen(ctx context.Context, out string) error {
 			continue
 		}
 		cmd := exec.CommandContext(ctx, a[0], a[1:]...)
+		proc.Hide(cmd)
 		cmd.Env = append(os.Environ(), "ASG_SHOT="+out)
 		msg, err := cmd.CombinedOutput()
 		if _, serr := os.Stat(out); serr == nil {

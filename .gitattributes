@@ -1,0 +1,2 @@
+# Shell scripts run on Windows runners too; CRLF breaks bash.
+*.sh text eol=lf

@@ -50,6 +50,46 @@ jobs:
       - name: Shellcheck install script
         run: shellcheck install.sh
 
+  desktop:
+    name: desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-latest, os: windows, arch: amd64 }
+          - { runner: macos-latest, os: darwin, arch: universal }
+          - { runner: ubuntu-24.04, os: linux, arch: amd64 }
+    runs-on: ${{ matrix.runner }}
+    env:
+      # Ubuntu 24.04 only ships webkit2gtk-4.1; Wails needs the tag to use it.
+      EXTRA_TAGS: ${{ matrix.os == 'linux' && ',webkit2_41' || '' }}
+      # Wails' macOS file dialogs use UTType (macOS 11+).
+      CGO_LDFLAGS: ${{ matrix.os == 'darwin' && '-framework UniformTypeIdentifiers -mmacosx-version-min=11.0' || '' }}
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.os == 'darwin' && '11.0' || '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: desktop/go.mod
+          cache-dependency-path: desktop/go.sum
+      - name: Linux build dependencies
+        if: matrix.os == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: go mod tidy
+        working-directory: desktop
+        run: go mod tidy && git diff --exit-code go.mod go.sum
+      - name: Vet
+        working-directory: desktop
+        run: go vet -tags "desktop,production$EXTRA_TAGS" . && go vet -tags "devserve$EXTRA_TAGS" .
+      - name: Test
+        working-directory: desktop
+        run: go test -tags "desktop,production$EXTRA_TAGS" .
+      - name: Package (same script as the release)
+        run: bash desktop/build/package.sh ${{ matrix.os }} "${{ matrix.arch }}" dev dist-desktop
+
   release-dry-run:
     runs-on: ubuntu-latest
     steps:

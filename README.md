@@ -94,6 +94,8 @@ git diff | asg -p -                                 # "-" reads the prompt from 
 asg -loop -yolo -p "add a --json flag, with tests"  # unattended; exit code 2 if it didn't finish
 asg -provider anthropic -model claude-opus-5-5      # switch backend (remembered)
 asg dashboard                                       # the browser version on 127.0.0.1:7777
+# desktop app for Windows, macOS and Linux (sessions, projects, code, artifacts,
+# schedules): download asg-desktop_* from the latest release, see docs/desktop.md
 ```
 
 The [terminal guide](docs/README.md) goes through every key and command with examples.
@@ -128,7 +130,8 @@ different angle, and fixes what it finds (`/review` to change that). If the mode
 Ollama speech model, OpenAI TTS, or your OS voice.
 
 **Memory and skills.** Notes it should keep go to `~/.asg/memory/` as plain Markdown. `SKILL.md` skills
-install from GitHub, a URL or a folder with `asg skill add`.
+install from GitHub, a URL or a folder with `asg skill add`. Two come built in:
+`/design-first-dev` and `/frontend-design`.
 
 **Tools.** Shell, files, glob, grep, web fetch, Word/PowerPoint/Excel output, browser screenshots,
 and your own script tools in any language (`asg tool new <name>`).

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/kxngHADES/asg-harness/internal/proc"
 	"io"
 	"io/fs"
 	"net/http"
@@ -228,6 +229,7 @@ func RunShell(ctx context.Context, command string, timeout time.Duration) (out s
 		}
 		cmd = exec.CommandContext(ctx, shell, "-c", command)
 	}
+	proc.Hide(cmd)
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
 	err := cmd.Run()

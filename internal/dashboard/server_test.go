@@ -74,8 +74,8 @@ func TestStateListsNeverNull(t *testing.T) {
 			t.Errorf("state contains %s", k)
 		}
 	}
-	if !strings.Contains(body, `"skills":[]`) {
-		t.Errorf("want empty skills array, got %.200s", body)
+	if !strings.Contains(body, `"skills":[`) { // only the built-ins on a fresh install
+		t.Errorf("want a skills array, got %.200s", body)
 	}
 	if hist := do(s, "GET", "/api/history", "127.0.0.1:1", s.token, "").Body.String(); !strings.Contains(hist, `"messages":[]`) {
 		t.Errorf("history: %s", hist)
