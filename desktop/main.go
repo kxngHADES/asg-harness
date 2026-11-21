@@ -32,6 +32,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "asg-desktop:", err)
 		os.Exit(1)
 	}
+	afterUpdate(os.Args[1:])
 	app := NewApp(agent.NewApp(cfg))
 	dist, _ := fs.Sub(assets, "frontend/dist")
 
@@ -48,6 +49,7 @@ func main() {
 		AssetServer:      &assetserver.Options{Assets: dist},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
+		OnBeforeClose:    app.beforeClose,
 		Bind:             []interface{}{app},
 		SingleInstanceLock: &options.SingleInstanceLock{
 			UniqueId: "asg-desktop-6f1d2c4e",

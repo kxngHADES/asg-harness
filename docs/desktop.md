@@ -12,7 +12,41 @@ HTML, CSS and JS in `desktop/frontend/dist` — there is no Node build step.
 ## Download
 
 Every release on the [releases page](https://github.com/kxngHADES/asg-harness/releases/latest)
-carries the desktop app next to the terminal binaries:
+carries the desktop app next to the terminal binaries.
+
+### Setup wizard (recommended)
+
+Download the setup file for your platform and run it. It isn't zipped:
+
+| File | Platform | Notes |
+|---|---|---|
+| `asg-setup_windows_amd64.exe` / `_arm64.exe` | Windows 10/11 | Not code-signed: if SmartScreen says "Windows protected your PC", choose **More info → Run anyway**. |
+| `asg-setup_darwin_universal.dmg` | macOS 11+ | Open the disk image, then **right-click → Open** on **ASG Setup** the first time (it has no Apple Developer ID). |
+| `asg-setup_linux_amd64` / `_arm64` | Linux with GTK 3 + WebKitGTK 4.1 | `chmod +x asg-setup_linux_amd64 && ./asg-setup_linux_amd64` (browsers drop the executable bit). |
+
+The wizard walks through:
+
+1. **Location**: where the app goes. The defaults need no administrator rights:
+   `%LOCALAPPDATA%\Programs\ASG`, `/Applications` (or `~/Applications`), `~/.local/share/asg-desktop`.
+2. **Shortcuts**: a desktop shortcut, a Start menu / app menu entry, start at sign-in,
+   `asg-desktop` on your `PATH` (Linux only), and the theme.
+3. **Storage**: the **data folder** (sessions, artifacts, sandboxes) and the **memory folder**
+   (the agent's notes). Both can be moved later in **Settings → Storage & sandbox**.
+4. **Providers**: switch on Ollama, Anthropic, OpenAI or any OpenAI-compatible API (OpenRouter,
+   Groq, LM Studio, …). **Test connection** lists the provider's models. Add more or change keys
+   any time in **Customise → Providers**.
+5. **Review** and install.
+
+Running the wizard again with an existing install offers **Reinstall** (an in-place update that keeps
+your data) or **Uninstall**. On Windows, ASG is also listed under **Settings → Apps → Installed
+apps**, which runs `uninstall.exe` from the install folder. Uninstall removes the app, its
+shortcuts and its start-up entry. It deletes sessions and memory only when you tick that box.
+`config.json` is always kept, because the terminal app uses it too. What an install created is
+recorded in `~/.asg/install.json`.
+
+### Archives
+
+Prefer to unpack it yourself? Use the archives instead:
 
 | File | Platform | How to install |
 |---|---|---|
@@ -45,6 +79,13 @@ and manifest with [go-winres](https://github.com/tc-hib/go-winres); on macOS it 
 arm64 + amd64 universal `ASG.app`; on Linux a tarball with a `.desktop` file. The icon is
 `desktop/build/appicon.png` (the crab, drawn from `internal/sprite`).
 
+The setup wizard lives in `desktop/installer` (a second Wails app in the same module).
+`package.sh` packs the built app into `installer/payload/app.tar.gz` and builds the wizard around
+it, so every `asg-setup_*` file contains the matching app. `make setup-preview` builds it without a
+payload: it walks through every screen and installs nothing. You can also open
+`desktop/installer/frontend/index.html` from any local web server, where a built-in mock stands in
+for the Go side (`?os=darwin`, `?existing=1` and `?mode=uninstall` show the other variants).
+
 For UI work, `go run -tags devserve .` serves the same UI on `http://127.0.0.1:7788` with
 the real backend behind it, so you can use the browser's dev tools. Folder pickers become
 a browser prompt there. Set `ASG_HOME` to a scratch folder to keep test data apart.
@@ -60,13 +101,42 @@ a browser prompt there. Set `ASG_HOME` to a scratch folder to keep test data apa
 | **Artifacts** | Every file a session wrote (`write_file`, `office_document`) is snapshotted, so it survives the original being changed or deleted. Writing the same file again adds a version. Pages and SVGs preview live (HTML runs in a sandboxed frame), Markdown renders, code is highlighted; Office files open in their own app. Coding sessions only keep documents and images, not every source file. |
 | **Schedules** | A prompt that runs every N minutes, hourly, daily, on weekdays or weekly. Each run is its own session (clock icon). Runs only while the app is open; a run missed while it was closed runs once on the next start. Nobody can answer a permission prompt during a scheduled run, so gated tools are skipped unless you turn on **Allow tools**. |
 | **Customise** | Providers and models, global instructions, skills (create / import / remove; the built-in `/design-first-dev` and `/frontend-design` are tagged **Built-in**), tools, memory notes, and behaviour (auto-approve, tool rounds, self-review passes, temperature). |
-| **Settings** | Theme, and **Storage & sandbox** (below). |
+| **Settings** | Theme, the tray, **Updates** and **Storage & sandbox** (below). |
 
 Session icons: speech bubble = chat, terminal = code, sparkles = artifact, folder = project
 chat, clock = scheduled run.
 
 Keys: `Ctrl+N` new chat · `Ctrl+K` search and jump · `Ctrl+B` sidebar · `Enter` send ·
 `Shift+Enter` new line · `Esc` close.
+
+## Updates
+
+**Settings → Updates** shows the installed version and checks the latest
+[GitHub release](https://github.com/kxngHADES/asg-harness/releases/latest). If it is newer you
+see the release notes and choose what to do: **Update and restart**, **Skip this version**, or
+open the release page. Nothing is downloaded or installed until you choose to update.
+
+Updating downloads the archive for your platform (`asg-desktop_<os>_<arch>.zip` / `.tar.gz`),
+checks it against its `.sha256`, replaces the app in place (the `.exe`, the binary, or `ASG.app`
+on macOS) and restarts. Sessions, settings, memory and `config.json` are untouched. Running
+sessions must finish first. If ASG can't write to its install folder (for example an
+administrator install), it says so and links to the setup wizard instead. Development builds
+(`version` = `dev`) can't update themselves.
+
+ASG also checks on its own shortly after start and twice a day and shows a notice when a version
+is out. Turn that off with **Check for updates automatically**.
+
+## Tray icon
+
+On Windows and Linux ASG puts the crab in the notification area / system tray. Click it to open
+the window; right-click it for **Open ASG**, **New chat**, **Schedules**, **Check for updates…**
+(it reads **Update to vX…** when one is out), **Settings** and **Quit ASG**.
+
+Closing the window keeps ASG running in the tray, so schedules keep running. To quit, use
+**Quit ASG** from the tray, or turn off **Settings → Appearance → Keep running in the tray when I
+close the window**. On Linux the tray needs a StatusNotifierItem host (KDE, or GNOME with the
+AppIndicator extension); without one there is no icon and closing the window quits. macOS has no
+tray icon: use the Dock.
 
 ## Storage and the sandbox
 
@@ -87,6 +157,10 @@ projects.json  schedules.json  desktop.log
 - **Use a different folder** that already holds ASG data (say, the same drive on another PC),
   without moving anything.
 - **Reset** to the default folder.
+
+**Memory** (same page) shows where the agent's notes live: `~/.asg/memory` by default. **Choose…**
+moves them to any folder (e.g. a synced one) by copying the notes over. The folder is saved as
+`memory_dir` in `config.json`, so the `asg` terminal app uses it too.
 
 The chosen folder is remembered in `~/.asg/desktop.json`. If it isn't there at start-up
 (drive unplugged), the app falls back to the default folder for that run and tells you.

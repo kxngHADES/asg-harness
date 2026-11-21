@@ -2,6 +2,7 @@ package memory
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -58,5 +59,28 @@ func TestSaveListDelete(t *testing.T) {
 		if strings.Contains(n.Name, ".") {
 			t.Errorf("unsafe name kept: %q", n.Name)
 		}
+	}
+}
+
+func TestNewInKeepsNotesUnderDir(t *testing.T) {
+	dir := t.TempDir()
+	wd, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	m := NewIn(dir)
+	if m.Dir(User) != dir {
+		t.Fatalf("user dir = %s, want %s", m.Dir(User), dir)
+	}
+	p, err := m.Save(Project, "deploy", "Deploys go through fly.io.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(p, filepath.Join(dir, "projects")) {
+		t.Fatalf("project note saved at %s, want it under %s", p, filepath.Join(dir, "projects"))
+	}
+	if got := NewIn(dir).List(); len(got) != 1 || got[0].Name != "deploy" {
+		t.Fatalf("List() = %+v", got)
 	}
 }

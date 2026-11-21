@@ -84,6 +84,7 @@ terminal, `asg` flags and the dashboard all edit the same file.
 | `providers.<name>.model` | that provider's model |
 | `providers.<name>.num_ctx` | Ollama context window (default 16384; negative = Ollama's default) |
 | `auto_approve` | YOLO on start (turning YOLO off clears it) |
+| `memory_dir` | where memory notes live (user notes in it, project notes in `<dir>/projects/`); empty = `~/.asg/memory` |
 | `domain`, `flavor` | the [track](domains.md) ASG starts in |
 | `review.passes` | minimum self-review passes (`-1` = off) |
 | `review.max_passes` | upper limit when the last pass still finds problems |

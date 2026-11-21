@@ -2,7 +2,9 @@
 # Merging that PR tags a version, creates the GitHub release, and the
 # publish job builds binaries for every platform and attaches them.
 # install.sh / install.ps1 / `asg update` always pull the latest release.
-# publish-desktop builds the desktop app on each OS and attaches it too.
+# publish-desktop builds the desktop app on each OS and attaches it too, plus
+# the setup wizard as a plain file per platform (asg-setup_windows_<arch>.exe,
+# asg-setup_darwin_universal.dmg, asg-setup_linux_<arch>) — never zipped.
 name: release
 
 on:
@@ -92,11 +94,11 @@ jobs:
       - name: Test
         working-directory: desktop
         shell: bash
-        run: go test -tags "desktop,production$EXTRA_TAGS" .
+        run: go test -tags "desktop,production$EXTRA_TAGS" . ./installer
       - name: Build and package
         shell: bash
         run: bash desktop/build/package.sh ${{ matrix.os }} "${{ matrix.arch }}" "$TAG" dist-desktop
-      - name: Attach to the release
+      - name: Attach to the release (archives, setup wizards, checksums)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

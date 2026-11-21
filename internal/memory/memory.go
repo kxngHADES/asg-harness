@@ -4,6 +4,9 @@
 //	~/.asg/memory/*.md                       user scope: applies everywhere
 //	~/.asg/projects/<project>/memory/*.md    project scope: this directory only
 //
+// With a memory folder set (config "memory_dir", see NewIn) both live under
+// that folder instead: <dir>/*.md and <dir>/projects/<project>/memory/*.md.
+//
 // Notes are plain Markdown so people can read and edit them by hand.
 package memory
 
@@ -33,17 +36,35 @@ type Note struct {
 	ModTime time.Time
 }
 
-type Manager struct{ home string }
+type Manager struct {
+	user     string // user-scope notes
+	projects string // parent of the per-project note folders
+}
 
-func New(home string) *Manager { return &Manager{home: home} }
+// New keeps notes in the harness home (the default layout above).
+func New(home string) *Manager {
+	return &Manager{user: filepath.Join(home, "memory"), projects: filepath.Join(home, "projects")}
+}
+
+// NewIn keeps every note under dir: user notes in dir itself and project
+// notes in dir/projects/<project>/memory.
+func NewIn(dir string) *Manager {
+	return &Manager{user: dir, projects: filepath.Join(dir, "projects")}
+}
+
+// Root returns the folder that holds the user notes.
+func (m *Manager) Root() string { return m.user }
+
+// ProjectsDir returns the folder that holds the per-project note folders.
+func (m *Manager) ProjectsDir() string { return m.projects }
 
 // Dir returns the folder for a scope, relative to the current directory.
 func (m *Manager) Dir(scope string) string {
 	if scope == Project {
 		cwd, _ := os.Getwd()
-		return filepath.Join(m.home, "projects", projectSlug(cwd), "memory")
+		return filepath.Join(m.projects, projectSlug(cwd), "memory")
 	}
-	return filepath.Join(m.home, "memory")
+	return m.user
 }
 
 func projectSlug(dir string) string {
