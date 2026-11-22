@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/kxngHADES/asg-harness/compare/v0.5.0...v0.6.0) (2026-11-22)
+
+
+### Features
+
+* **mobile:** connect the mobile companion to the desktop app ([#23](https://github.com/kxngHADES/asg-harness/issues/23)) ([cb5b590](https://github.com/kxngHADES/asg-harness/commit/cb5b590de29c4dfb80642847d9da00b5497bbbec))
+
 ## [0.5.0](https://github.com/kxngHADES/asg-harness/compare/v0.4.0...v0.5.0) (2026-11-21)
 
 
