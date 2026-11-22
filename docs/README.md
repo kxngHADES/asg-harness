@@ -5,6 +5,7 @@ examples for each way of working.
 
 | Page | What it covers |
 |---|---|
+| [Install](install.md) | Installing `asg`, setting up a model, and adding the desktop and mobile apps |
 | [Getting started](getting-started.md) | Starting `asg`, reading the screen, the prompt, the keys you'll use every day |
 | [Modes](modes.md) | **How** ASG works: build, plan, loop, ask — switching with Shift+Tab and `/mode` |
 | [Domains](domains.md) | **What kind of work** ASG does: software, docs, cyber, devops, pm — and their sub-modes (software/project → software/work, cyber/red → cyber/blue, …) |

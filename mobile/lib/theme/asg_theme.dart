@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Matches desktop/frontend/dist/app.css ("warm graphite shell, lime brand,
 /// one colour per session kind").

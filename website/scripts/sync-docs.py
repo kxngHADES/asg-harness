@@ -23,6 +23,14 @@ PAGES = [
         "accent": "lime",
     },
     {
+        "slug": "install",
+        "file": "install.md",
+        "title": "Install",
+        "group": "Start here",
+        "summary": "Install the terminal app, set up a model, and add the desktop and mobile apps.",
+        "accent": "lime",
+    },
+    {
         "slug": "getting-started",
         "file": "getting-started.md",
         "title": "Getting started",
