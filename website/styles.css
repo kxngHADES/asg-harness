@@ -149,6 +149,13 @@ kbd {
 .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font: 800 1.35rem/1 var(--f-display); font-stretch: 120%; }
 .brand img { image-rendering: pixelated; }
 .hero__timecode, .hero__release { font-size: .75rem; letter-spacing: .06em; color: rgb(233 239 229 / .78); margin: 0; }
+.hero__right { display: inline-flex; align-items: center; gap: 16px; }
+.hero__docs {
+  font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; text-decoration: none;
+  color: var(--lime); padding: 6px 12px; border-radius: 999px;
+  border: 1px solid rgb(198 244 50 / .38); transition: background-color .2s, color .2s, border-color .2s;
+}
+.hero__docs:hover { background: var(--lime); color: #121510; border-color: var(--lime); }
 .hero__timecode { display: inline-flex; align-items: center; gap: 8px; }
 .rec { width: 8px; height: 8px; border-radius: 50%; background: var(--coral); }
 @keyframes blink { 50% { opacity: .2; } }

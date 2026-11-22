@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Docs · ASG</title>
+  <meta name="description" content="ASG documentation: getting started, modes, domains, the loop harness, tools, permissions, CLI flags, and the desktop app.">
+  <meta name="theme-color" content="#0d100e">
+  <link rel="icon" href="../assets/crab.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@50..150,500..900&family=Hanken+Grotesk:wght@400;500;700&family=Martian+Mono:wdth,wght@75..112.5,400;600&display=swap">
+  <link rel="stylesheet" href="docs.css">
+  <script>
+    (() => {
+      try {
+        const t = localStorage.getItem('asg-theme');
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+      } catch (_) {}
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip" href="#doc-content">Skip to content</a>
+
+  <header class="topbar">
+    <div class="topbar__left">
+      <button class="icon-btn topbar__menu" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false" data-toggle-nav>
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <a class="brand" href="../index.html" aria-label="ASG home">
+        <img src="../assets/crab.svg" width="34" height="24" alt="">
+        <span>asg</span>
+      </a>
+      <span class="topbar__sep" aria-hidden="true">/</span>
+      <a class="topbar__section mono" href="#overview">docs</a>
+    </div>
+
+    <div class="topbar__right">
+      <button class="search-trigger" type="button" aria-haspopup="dialog" aria-controls="search-dialog" data-open-search>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <span>Search docs…</span>
+        <kbd>/</kbd>
+      </button>
+
+      <button class="icon-btn" type="button" aria-label="Toggle color theme" title="Toggle light / dark theme" data-toggle-theme>
+        <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a6.8 6.8 0 0 0 11 11z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+      </button>
+
+      <a class="topbar__link mono" href="../index.html#download">Download</a>
+      <a class="topbar__link mono" href="https://github.com/kxngHADES/asg-harness" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <div class="scrim" data-close-nav hidden></div>
+
+  <div class="shell">
+    <aside class="sidebar" id="sidebar" aria-label="Documentation">
+      <nav class="nav" id="doc-nav"></nav>
+      <div class="sidebar__foot mono">
+        <a href="../index.html">← Back to ASG home</a>
+      </div>
+    </aside>
+
+    <main class="main" id="doc-content" tabindex="-1">
+      <div class="doc-meta mono">
+        <span class="doc-meta__group" id="doc-group"></span>
+        <a class="doc-meta__edit" id="doc-edit" href="https://github.com/kxngHADES/asg-harness/tree/main/docs" target="_blank" rel="noopener">View source on GitHub ↗</a>
+      </div>
+
+      <article class="prose" id="doc-article"></article>
+
+      <nav class="pager" id="doc-pager" aria-label="Adjacent pages"></nav>
+    </main>
+
+    <aside class="toc" aria-label="On this page">
+      <div class="toc__inner">
+        <p class="toc__title mono">On this page</p>
+        <ul class="toc__list" id="doc-toc"></ul>
+      </div>
+    </aside>
+  </div>
+
+  <dialog class="palette" id="search-dialog" aria-label="Search documentation">
+    <div class="palette__inner">
+      <div class="palette__bar">
+        <span class="palette__slash mono" aria-hidden="true">/</span>
+        <input class="palette__input mono" id="search-input" type="text" placeholder="search docs, commands, flags…" aria-label="Search documentation" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="true" aria-controls="search-list" aria-autocomplete="list">
+        <button class="palette__close mono" type="button" data-close-search>esc</button>
+      </div>
+      <ul class="palette__list" id="search-list" role="listbox"></ul>
+      <p class="palette__hint mono">↑ ↓ to move · enter to open · <kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>K</kbd> anywhere</p>
+    </div>
+  </dialog>
+
+  <div class="toast mono" role="status" aria-live="polite"></div>
+
+  <script src="docs-data.js"></script>
+  <script src="docs.js"></script>
+</body>
+</html>
