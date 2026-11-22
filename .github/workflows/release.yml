@@ -5,6 +5,8 @@
 # publish-desktop builds the desktop app on each OS and attaches it too, plus
 # the setup wizard as a plain file per platform (asg-setup_windows_<arch>.exe,
 # asg-setup_darwin_universal.dmg, asg-setup_linux_<arch>) — never zipped.
+# publish-mobile builds the Flutter mobile companion (asg-mobile_android.apk
+# and asg-mobile_ios_unsigned.ipa) and attaches them with SHA-256 checksums.
 name: release
 
 on:
@@ -103,3 +105,61 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "$TAG" dist-desktop/* --clobber
+
+  publish-mobile:
+    needs: release-please
+    if: >-
+      always() &&
+      (needs.release-please.outputs.release_created == 'true' || github.event_name == 'workflow_dispatch')
+    name: mobile (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest, platform: android }
+          - { runner: macos-latest, platform: ios }
+    runs-on: ${{ matrix.runner }}
+    env:
+      TAG: ${{ needs.release-please.outputs.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-java@v4
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Test
+        working-directory: mobile
+        shell: bash
+        run: flutter pub get && flutter analyze && flutter test
+      - name: Build Android APK
+        if: matrix.platform == 'android'
+        working-directory: mobile
+        shell: bash
+        run: |
+          VERSION="${TAG#v}"
+          flutter build apk --release --build-name="$VERSION" --build-number="${{ github.run_number }}"
+          mkdir -p ../dist-mobile
+          cp build/app/outputs/flutter-apk/app-release.apk ../dist-mobile/asg-mobile_android.apk
+          (cd ../dist-mobile && sha256sum asg-mobile_android.apk > asg-mobile_android.apk.sha256)
+      - name: Build iOS IPA (unsigned)
+        if: matrix.platform == 'ios'
+        working-directory: mobile
+        shell: bash
+        run: |
+          VERSION="${TAG#v}"
+          flutter build ios --release --no-codesign --build-name="$VERSION" --build-number="${{ github.run_number }}"
+          mkdir -p ../dist-mobile/Payload
+          cp -R build/ios/iphoneos/Runner.app ../dist-mobile/Payload/Runner.app
+          (cd ../dist-mobile && zip -qr asg-mobile_ios_unsigned.ipa Payload && rm -rf Payload && shasum -a 256 asg-mobile_ios_unsigned.ipa > asg-mobile_ios_unsigned.ipa.sha256)
+      - name: Attach to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" dist-mobile/* --clobber
