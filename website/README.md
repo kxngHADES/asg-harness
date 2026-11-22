@@ -34,9 +34,10 @@ https://github.com/kxngHADES/asg-harness/releases/latest/download/<file>
 ```
 
 GitHub sends that to the newest release's file, so a new release needs no change here. The
-release workflow publishes the setup wizard under fixed names (`asg-setup_windows_<arch>.exe`,
-`asg-setup_darwin_universal.dmg`, `asg-setup_linux_<arch>`). **If those names change, update
-`setupFile()` in `js/main.js` and the links in `index.html`.**
+release workflow publishes the setup wizard (`asg-setup_windows_<arch>.exe`,
+`asg-setup_darwin_universal.dmg`, `asg-setup_linux_<arch>`) and the mobile app
+(`asg-mobile_android.apk`, `asg-mobile_ios_unsigned.ipa`) under fixed names. **If those names
+change, update `setupFile()` in `js/main.js` and the links in `index.html`.**
 
 `main.js` reads the visitor's OS (and CPU, via `navigator.userAgentData` where the browser
 supports it) to pick the main button's file and preselect the install tab. The GitHub API call is

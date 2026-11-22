@@ -54,8 +54,9 @@ type App struct {
 
 	// Hooks replace the Wails runtime when the UI is served for development
 	// (devserve.go): events go to the browser and folder picks come from it.
-	emitHook func(name string, data any)
-	pickHook func(title string) (string, error)
+	emitHook  func(name string, data any)
+	pickHook  func(title string) (string, error)
+	netBridge *networkBridge
 }
 
 // liveSession is a session loaded into memory.
@@ -85,6 +86,10 @@ func (a *App) startup(ctx context.Context) {
 	a.startScheduler()
 	a.stopUpd = make(chan struct{})
 	a.startUpdateChecks()
+	if addr := os.Getenv("ASG_MOBILE_ADDR"); addr != "off" {
+		a.netBridge = newNetworkBridge(a, addr)
+		_ = a.netBridge.start()
+	}
 	if ctx != nil { // nil when served for development (devserve.go)
 		a.startTray()
 	}
@@ -132,10 +137,16 @@ func (a *App) shutdown(context.Context) {
 	if a.stopUpd != nil {
 		close(a.stopUpd)
 	}
+	if a.netBridge != nil {
+		a.netBridge.stop()
+	}
 	a.stopTray()
 }
 
 func (a *App) emit(name string, data any) {
+	if a.netBridge != nil {
+		a.netBridge.broadcast(name, data)
+	}
 	if a.emitHook != nil {
 		a.emitHook(name, data)
 		return
@@ -521,6 +532,15 @@ func (a *App) Send(id, text string, images []ImageIn, skill string) error {
 		_ = a.store.SaveSession(ls.file)
 	}
 	ls.mu.Unlock()
+	shown := text
+	if skill != "" {
+		shown = "/" + skill + " " + text
+	}
+	var imgURLs []string
+	for _, img := range msg.Images {
+		imgURLs = append(imgURLs, dataURL(img))
+	}
+	a.emit("asg:turn", map[string]any{"session": id, "type": "user", "text": shown, "images": imgURLs})
 	a.emit("asg:sessions", nil)
 	go a.runTurn(ls, ctx, msg, false, false)
 	return nil

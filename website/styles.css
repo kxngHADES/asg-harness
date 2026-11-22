@@ -343,6 +343,7 @@ html:not(.js) .title__layer { transform: none; }
 .download { padding: clamp(80px, 12vw, 160px) 0 clamp(60px, 8vw, 100px); }
 .download .h2 { font-size: clamp(3.4rem, 12vw, 11rem); font-variation-settings: "wdth" 130; }
 .oscards { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(18px, 2.4vw, 32px); }
+.oscards--mobile { grid-template-columns: repeat(2, 1fr); }
 .os { padding: clamp(22px, 2.6vw, 34px); display: flex; flex-direction: column; gap: 10px; position: relative; transition: transform .5s var(--ease-out), box-shadow .3s; }
 .os__icon { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; box-shadow: var(--press-sm); margin-bottom: 10px; }
 .os__icon svg { width: 28px; height: 28px; fill: var(--ink); }

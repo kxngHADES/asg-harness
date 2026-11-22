@@ -521,6 +521,18 @@ function onTurn(ev) {
   const visible = S.view.name === "session" && S.view.id === sid;
   let full = false;
   switch (ev.type) {
+    case "user":
+      // Avoid duplicating the bubble if this window just sent the message.
+      if (!(last && last.type === "user" && last.text === ev.text)) {
+        items.push({ type: "user", text: ev.text, images: ev.images || [] });
+        full = true;
+      }
+      live.running = true;
+      live.started ||= Date.now();
+      live.status = "";
+      live.review = null;
+      renderSidebar();
+      break;
     case "text":
       if (last && last.type === "assistant" && last.pending) last.text += ev.text;
       else { items.push({ type: "assistant", text: ev.text, pending: true }); full = true; }

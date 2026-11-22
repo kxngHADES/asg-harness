@@ -11,16 +11,20 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
   /* ───────── OS detection ───────── */
-  const OS_NAME = { windows: 'Windows', mac: 'macOS', linux: 'Linux' };
+  const OS_NAME = { windows: 'Windows', mac: 'macOS', linux: 'Linux', android: 'Android', ios: 'iOS' };
   const ICONS = {
     windows: $('[data-os="windows"] .os__icon svg')?.outerHTML,
     mac: $('[data-os="mac"] .os__icon svg')?.outerHTML,
     linux: $('[data-os="linux"] .os__icon svg')?.outerHTML,
+    android: $('[data-os="android"] .os__icon svg')?.outerHTML,
+    ios: $('[data-os="ios"] .os__icon svg')?.outerHTML,
   };
   function setupFile(os, arch) {
     if (os === 'windows') return `asg-setup_windows_${arch}.exe`;
     if (os === 'mac') return 'asg-setup_darwin_universal.dmg';
     if (os === 'linux') return `asg-setup_linux_${arch}`;
+    if (os === 'android') return 'asg-mobile_android.apk';
+    if (os === 'ios') return 'asg-mobile_ios_unsigned.ipa';
     return null;
   }
   function detect() {
@@ -62,13 +66,11 @@
       if (icon && ICONS[sys.os]) icon.innerHTML = ICONS[sys.os];
       note.textContent = `${file} · straight from the latest GitHub release`;
       if (sys.os === 'linux') note.textContent += ' · chmod +x, then run it';
+      if (sys.os === 'android' || sys.os === 'ios') note.textContent += ' · connects to ASG Desktop on your Wi-Fi';
     } else {
-      // Phones and unknown systems: ASG is a desktop/terminal app, so show the options.
       primary.href = '#download';
-      label.textContent = 'Get ASG for your computer';
-      note.textContent = sys.os === 'ios' || sys.os === 'android'
-        ? 'ASG runs on macOS, Windows and Linux. Open this page on your computer to download.'
-        : 'Pick your system below, or install from a terminal.';
+      label.textContent = 'Download ASG';
+      note.textContent = 'Pick your system below, or install from a terminal.';
     }
     // Preselect the matching install tab.
     selectTab(sys.os === 'windows' ? 'win' : 'unix', false);
@@ -306,7 +308,7 @@
       { t: 'modes', d: 'build · plan · ask · loop', c: 'var(--cyan)', run: go('#modes') },
       { t: 'loop', d: 'how the harness works', c: 'var(--coral)', run: go('#loop') },
       { t: 'inside', d: 'gates, domains, memory, skills', c: 'var(--magenta)', run: go('#inside') },
-      { t: 'all downloads', d: 'Windows · macOS · Linux', c: 'var(--lime)', run: go('#download') },
+      { t: 'all downloads', d: 'Windows · macOS · Linux · Android · iOS', c: 'var(--lime)', run: go('#download') },
       { t: 'terminal', d: 'one-line install', c: 'var(--cyan)', run: go('#terminal') },
       { t: 'copy install', d: sys.os === 'windows' ? 'PowerShell command' : 'curl command', c: 'var(--magenta)', run: async () => {
         dlg.close();
