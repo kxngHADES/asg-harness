@@ -4,6 +4,25 @@ The download page for ASG. Plain HTML, CSS and JavaScript: no build step, no fra
 
 ```
 website/
+├── index.html             page structure and copy
+├── styles.css             design tokens (top of file), neumorphic surfaces, layout, motion
+├── js/main.js             OS detection, downloads, release info, "/" menu, scroll motion
+├── js/shell.js            the 3D hermit-crab shell in the header (canvas, no WebGL library)
+├── assets/crab.svg        the ASG crab (copied from docs/asg-crab.svg)
+├── docs/
+│   ├── index.html         interactive docs reader (sidebar, TOC, "/" full-text search)
+│   ├── docs.css           docs layout and typography (matches the tide pool palette)
+│   ├── docs.js            zero-dependency Markdown renderer, routing, and search
+│   └── docs-data.js       auto-generated bundle of docs/*.md
+└── scripts/sync-docs.py   regenerates docs/docs-data.js from ../docs/*.md
+```
+
+## Updating the docs website
+
+Whenever files in `docs/` change, regenerate `website/docs/docs-data.js`:
+
+```sh
+python website/scripts/sync-docs.py
 ├── index.html      page structure and copy
 ├── styles.css      design tokens (top of file), neumorphic surfaces, layout, motion
 ├── js/main.js      OS detection, downloads, release info, "/" menu, scroll motion
