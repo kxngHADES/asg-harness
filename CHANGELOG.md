@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/kxngHADES/asg-harness/compare/v0.4.0...v0.5.0) (2026-11-21)
+
+
+### Features
+
+* **website:** add the ASG download site ([#20](https://github.com/kxngHADES/asg-harness/issues/20)) ([31a76ca](https://github.com/kxngHADES/asg-harness/commit/31a76cab1441a465ac24ddbade31e94e4c5bc528))
+
 ## [0.4.0](https://github.com/kxngHADES/asg-harness/compare/v0.3.0...v0.4.0) (2026-11-21)
 
 
