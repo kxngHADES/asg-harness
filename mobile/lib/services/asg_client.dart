@@ -99,6 +99,10 @@ class AsgClient {
         } catch (_) {
           // Ignore malformed replies
         }
+      }, onError: (Object _) {
+        // Send failures (e.g. "No route to host" with no network) arrive here
+        // rather than being thrown by send(); ignore them so manual IP entry
+        // still works.
       });
 
       final payload = utf8.encode(_discoverProbe);
