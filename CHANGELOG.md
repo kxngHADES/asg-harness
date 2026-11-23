@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/kxngHADES/asg-harness/compare/v0.6.2...v0.7.0) (2026-11-23)
+
+
+### Features
+
+* mobile model switcher, settings, in-app GitHub updater & live changelog ([#29](https://github.com/kxngHADES/asg-harness/issues/29)) ([8303ffe](https://github.com/kxngHADES/asg-harness/commit/8303ffe281928b400e26311cb5de9399f0af1661))
+
 ## [0.6.2](https://github.com/kxngHADES/asg-harness/compare/v0.6.1...v0.6.2) (2026-11-23)
 
 
