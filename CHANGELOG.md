@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/kxngHADES/asg-harness/compare/v0.6.0...v0.6.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* mobile Flutter 3.50 build, website docs link and install docs ([#25](https://github.com/kxngHADES/asg-harness/issues/25)) ([1c25847](https://github.com/kxngHADES/asg-harness/commit/1c2584795f465e0212c3a31114452510fbf94d79))
+
 ## [0.6.0](https://github.com/kxngHADES/asg-harness/compare/v0.5.0...v0.6.0) (2026-11-22)
 
 
