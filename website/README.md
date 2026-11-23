@@ -14,6 +14,10 @@ website/
 │   ├── docs.css           docs layout and typography (matches the tide pool palette)
 │   ├── docs.js            zero-dependency Markdown renderer, routing, and search
 │   └── docs-data.js       auto-generated bundle of docs/*.md
+├── changelog/
+│   ├── index.html         live changelog page (fetches main/CHANGELOG.md from GitHub)
+│   ├── changelog.css      timeline layout and category accents
+│   └── changelog.js       release-please Markdown parser, live polling, search & filters
 └── scripts/sync-docs.py   regenerates docs/docs-data.js from ../docs/*.md
 ```
 

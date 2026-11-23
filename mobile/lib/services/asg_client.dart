@@ -267,6 +267,22 @@ class AsgClient {
     await call('DeleteSession', [sessionId]);
   }
 
+  Future<ModelInfo> getModel() async {
+    final res = await call('GetModel');
+    return ModelInfo.fromJson((res as Map<String, dynamic>?) ?? const {});
+  }
+
+  Future<ModelInfo> setModel(String provider, String model) async {
+    final res = await call('SetModel', [provider, model]);
+    return ModelInfo.fromJson((res as Map<String, dynamic>?) ?? const {});
+  }
+
+  Future<List<String>> listModels(String provider) async {
+    final res = await call('ListModels', [provider]);
+    if (res is! List) return const [];
+    return res.map((e) => e.toString()).toList();
+  }
+
   void dispose() {
     _disposed = true;
     _sseClient?.close(force: true);

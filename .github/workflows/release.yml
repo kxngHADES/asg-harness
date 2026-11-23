@@ -142,7 +142,16 @@ jobs:
         if: matrix.platform == 'android'
         working-directory: mobile
         shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > /tmp/asg-release.jks
+            export ANDROID_KEYSTORE_PATH=/tmp/asg-release.jks
+          fi
           VERSION="${TAG#v}"
           flutter build apk --release --build-name="$VERSION" --build-number="${{ github.run_number }}"
           mkdir -p ../dist-mobile

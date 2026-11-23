@@ -1,8 +1,32 @@
+import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class HostStorage {
   static const _keyLastHost = 'asg.last_host';
   static const _keyRecentHosts = 'asg.recent_hosts';
+  static const _keyThemeMode = 'asg.theme_mode';
+
+  static Future<ThemeMode> loadThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    switch (prefs.getString(_keyThemeMode)) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  static Future<void> saveThemeMode(ThemeMode mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    };
+    await prefs.setString(_keyThemeMode, v);
+  }
 
   static Future<String?> loadLastHost() async {
     final prefs = await SharedPreferences.getInstance();
