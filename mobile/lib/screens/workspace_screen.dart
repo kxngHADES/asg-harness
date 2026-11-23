@@ -6,6 +6,8 @@ import '../models/asg_models.dart';
 import '../services/asg_client.dart';
 import '../theme/asg_theme.dart';
 import '../widgets/markdown_view.dart';
+import '../widgets/model_picker_sheet.dart';
+import 'settings_screen.dart';
 
 /// Main mobile workspace mirroring the ASG Desktop experience:
 /// - Navigation drawer = Desktop sidebar (New chat, kind filters, grouped sessions)
@@ -16,10 +18,14 @@ class WorkspaceScreen extends StatefulWidget {
   const WorkspaceScreen({
     super.key,
     required this.host,
+    required this.themeMode,
+    required this.onThemeModeChanged,
     required this.onDisconnect,
   });
 
   final HostInfo host;
+  final ThemeMode themeMode;
+  final void Function(ThemeMode mode) onThemeModeChanged;
   final VoidCallback onDisconnect;
 
   @override
@@ -456,6 +462,41 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
     }
   }
 
+  Future<void> _openModelPicker() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ModelPickerSheet(
+        client: _client,
+        current: _model,
+        onChanged: (updated) {
+          setState(() => _model = updated);
+          _showToast('Switched to ${updated.label}');
+        },
+      ),
+    );
+  }
+
+  void _openSettings() {
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(
+          themeMode: widget.themeMode,
+          onThemeModeChanged: widget.onThemeModeChanged,
+          host: widget.host,
+          client: _client,
+          model: _model,
+          onModelChanged: (updated) => setState(() => _model = updated),
+          onDisconnect: widget.onDisconnect,
+        ),
+      ),
+    );
+  }
+
   Future<void> _showSessionMenu(SessionMeta s) async {
     final c = context.asg;
     await showModalBottomSheet<void>(
@@ -581,32 +622,39 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                 color: c.text,
               ),
             ),
-            Row(
-              children: [
-                Container(
-                  width: 7,
-                  height: 7,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _connStatus == ConnectionStateStatus.connected
-                        ? c.ok
-                        : c.warn,
-                  ),
-                ),
-                const SizedBox(width: 5),
-                Flexible(
-                  child: Text(
-                    '${widget.host.hostname} · ${_model?.label ?? widget.host.modelLabel}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: c.muted,
-                      fontWeight: FontWeight.w400,
+            InkWell(
+              onTap: _openModelPicker,
+              borderRadius: BorderRadius.circular(6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _connStatus == ConnectionStateStatus.connected
+                          ? c.ok
+                          : c.warn,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: Text(
+                      '${widget.host.hostname} · ${_model?.label ?? widget.host.modelLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: c.muted,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(Icons.unfold_more_rounded, size: 13, color: c.muted),
+                ],
+              ),
             ),
           ],
         ),
@@ -649,6 +697,11 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
             icon: const Icon(Icons.add_comment_outlined),
             tooltip: 'New chat',
             onPressed: _startNewChat,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
+            onPressed: _openSettings,
           ),
         ],
       ),
@@ -919,6 +972,45 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       ),
               ),
             ),
+
+            // Drawer footer: Model + Settings
+            Divider(height: 1, color: c.line),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton.icon(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        _openModelPicker();
+                      },
+                      style: TextButton.styleFrom(
+                        alignment: Alignment.centerLeft,
+                        foregroundColor: c.text2,
+                      ),
+                      icon: Icon(Icons.auto_awesome_rounded,
+                          size: 16, color: c.brand),
+                      label: Text(
+                        _model?.label ?? widget.host.modelLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.settings_outlined,
+                        size: 20, color: c.muted),
+                    tooltip: 'Settings & updates',
+                    onPressed: _openSettings,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -1055,7 +1147,24 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, color: c.muted),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
+            ActionChip(
+              avatar: Icon(Icons.auto_awesome_rounded, size: 15, color: c.brand),
+              label: Text(
+                _model != null
+                    ? '${_model!.provider} · ${_model!.label}'
+                    : widget.host.modelLabel,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12,
+                  color: c.text,
+                ),
+              ),
+              backgroundColor: c.surface,
+              side: BorderSide(color: c.line),
+              onPressed: _openModelPicker,
+            ),
+            const SizedBox(height: 16),
             Wrap(
               spacing: 8,
               runSpacing: 8,

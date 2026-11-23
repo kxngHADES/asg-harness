@@ -223,6 +223,12 @@ read [AGENTS.md](AGENTS.md) before changing it.
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/). Merging to `main` updates a
 release PR, and merging that tags a version and publishes binaries for macOS, Linux and Windows.
 
+## License
+
+ASG — the harness, the desktop app and the mobile app — is licensed under the
+[Apache License 2.0](LICENSE). You can use, modify and redistribute it, including commercially,
+as long as you keep the license and [NOTICE](NOTICE) and note any changes you make.
+
 <br>
 
 <p align="center"><sub>The crab is drawn with half-block characters and lives in <code>internal/sprite</code>.</sub></p>

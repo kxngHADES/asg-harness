@@ -53,6 +53,9 @@ var allowedRemoteMethods = map[string]bool{
 	"DeleteSession":        true,
 	"ListProjects":         true,
 	"ListArtifacts":        true,
+	"GetModel":             true,
+	"SetModel":             true,
+	"ListModels":           true,
 	"RenderMarkdown":       true,
 }
 

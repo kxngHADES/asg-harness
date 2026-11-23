@@ -317,7 +317,8 @@
         toast(ok ? 'Install command copied' : 'Copy failed. Select the command below instead.');
         if (!ok) go('#terminal')();
       } },
-      { t: 'docs', d: 'github.com · docs/', c: 'var(--cyan)', run: ext(`https://github.com/${REPO}/tree/main/docs`) },
+      { t: 'docs', d: 'read the guide & reference', c: 'var(--cyan)', run: () => { dlg.close(); location.href = 'docs/'; } },
+      { t: 'changelog', d: 'live release history', c: 'var(--coral)', run: () => { dlg.close(); location.href = 'changelog/'; } },
       { t: 'github', d: REPO, c: 'var(--lime)', run: ext(`https://github.com/${REPO}`) },
       { t: 'top', d: 'back to the start', c: 'var(--magenta)', run: go('#top') },
     );

@@ -8,6 +8,19 @@ Flutter mobile client for ASG (Android & iOS). Connects to **ASG Desktop** runni
 2. Make sure your phone and computer are on the same Wi-Fi network.
 3. Open **ASG Mobile** — it scans your network automatically and also lets you type your computer's IP address (e.g. `192.168.1.42` or `192.168.1.42:7789`).
 
+## In-app updates (Android, no Play Store)
+
+Open **Settings → App Updates (GitHub)** to check `kxngHADES/asg-harness` for the latest release, download `asg-mobile_android.apk`, and launch Android's in-place installer without uninstalling.
+
+For GitHub Actions releases to upgrade in place cleanly every time, Android requires every APK to be signed with the same keystore. Generate one once and add 4 repository secrets in GitHub:
+
+```sh
+keytool -genkey -v -keystore asg-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias asg
+base64 -w 0 asg-release.jks   # paste into ANDROID_KEYSTORE_BASE64
+```
+
+Secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (`asg`), `ANDROID_KEY_PASSWORD`.
+
 ## Development
 
 ```sh

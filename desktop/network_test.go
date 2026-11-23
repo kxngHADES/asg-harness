@@ -93,6 +93,16 @@ func TestNetworkBridgeInfoAndRPC(t *testing.T) {
 	if len(list) != 1 || list[0].ID != created.ID {
 		t.Fatalf("ListSessions = %+v, want session %s", list, created.ID)
 	}
+
+	// Model info endpoint is callable over the network.
+	resp5, err := http.Post(ts.URL+"/api/call/GetModel", "application/json", bytes.NewReader([]byte("[]")))
+	if err != nil {
+		t.Fatalf("POST GetModel: %v", err)
+	}
+	defer resp5.Body.Close()
+	if resp5.StatusCode != http.StatusOK {
+		t.Fatalf("GetModel status = %d, want 200", resp5.StatusCode)
+	}
 }
 
 func TestNetworkBridgeSSEBroadcast(t *testing.T) {

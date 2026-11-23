@@ -11,10 +11,12 @@ class ConnectScreen extends StatefulWidget {
   const ConnectScreen({
     super.key,
     required this.onConnected,
+    this.onOpenSettings,
     this.initialError,
   });
 
   final void Function(HostInfo host) onConnected;
+  final VoidCallback? onOpenSettings;
   final String? initialError;
 
   @override
@@ -151,6 +153,12 @@ class _ConnectScreenState extends State<ConnectScreen> {
                           ],
                         ),
                       ),
+                      if (widget.onOpenSettings != null)
+                        IconButton(
+                          icon: Icon(Icons.settings_outlined, color: c.muted),
+                          tooltip: 'Settings & updates',
+                          onPressed: widget.onOpenSettings,
+                        ),
                     ],
                   ),
                   const SizedBox(height: 26),

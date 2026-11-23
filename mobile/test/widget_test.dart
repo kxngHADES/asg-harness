@@ -1,4 +1,5 @@
 import 'package:asg_harness/main.dart';
+import 'package:asg_harness/services/app_updater.dart';
 import 'package:asg_harness/services/asg_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +23,13 @@ void main() {
       'http://my-pc.local:7789',
     );
     expect(() => AsgClient.normalizeBaseUrl('   '), throwsFormatException);
+  });
+
+  test('AppUpdater.compareSemver compares versions accurately', () {
+    expect(AppUpdater.compareSemver('v0.2.0', '0.1.0'), greaterThan(0));
+    expect(AppUpdater.compareSemver('0.1.0', 'v0.1.0'), equals(0));
+    expect(AppUpdater.compareSemver('0.1.0', 'v0.1.1'), lessThan(0));
+    expect(AppUpdater.compareSemver('v1.0.0-rc1', '0.9.9'), greaterThan(0));
   });
 
   testWidgets('AsgApp starts on the Connect screen', (tester) async {

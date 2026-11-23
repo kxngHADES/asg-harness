@@ -1,5 +1,6 @@
 name: asg_harness
 description: "ASG mobile client"
+license: Apache-2.0
 publish_to: 'none'
 version: 0.1.0+1
 
