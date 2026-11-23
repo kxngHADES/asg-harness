@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/kxngHADES/asg-harness/compare/v0.6.1...v0.6.2) (2026-11-23)
+
+
+### Bug Fixes
+
+* **mobile:** handle UDP discovery send errors on the socket stream ([#27](https://github.com/kxngHADES/asg-harness/issues/27)) ([d0a708f](https://github.com/kxngHADES/asg-harness/commit/d0a708faa8941538b2845dc4dd22544edcbf6940))
+
 ## [0.6.1](https://github.com/kxngHADES/asg-harness/compare/v0.6.0...v0.6.1) (2026-11-22)
 
 
