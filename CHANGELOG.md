@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/kxngHADES/asg-harness/compare/v0.7.0...v0.8.0) (2026-11-26)
+
+
+### Features
+
+* live computer use with direct mouse and keyboard control ([#52](https://github.com/kxngHADES/asg-harness/issues/52)) ([c429ab5](https://github.com/kxngHADES/asg-harness/commit/c429ab592d5bc09fdd8b1ac5815beb92115307da)), closes [#32](https://github.com/kxngHADES/asg-harness/issues/32)
+
 ## [0.7.0](https://github.com/kxngHADES/asg-harness/compare/v0.6.2...v0.7.0) (2026-11-23)
 
 
