@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"github.com/kxngHADES/asg-harness/internal/dashboard"
 	"github.com/kxngHADES/asg-harness/internal/llm"
 	"github.com/kxngHADES/asg-harness/internal/media"
+	"github.com/kxngHADES/asg-harness/internal/runtimes"
 	"github.com/kxngHADES/asg-harness/internal/tools"
 	"github.com/kxngHADES/asg-harness/internal/tui"
 	"github.com/kxngHADES/asg-harness/internal/update"
@@ -38,8 +40,11 @@ Usage:
   asg dashboard              web version: run the browser dashboard
   asg skill add <source>     import skills (path, URL, github:owner/repo[/path])
   asg skill list|rm <name>
-  asg tool new <name>        create a script tool in ~/.asg/tools
+  asg tool new <name> [--go] create a Python (or Go) tool in ~/.asg/tools
+  asg tool add <source>      import tools (folder, github:owner/repo[/path], GitHub URL)
+  asg tool setup <name>      install a tool's runtime and libraries now
   asg tool list              list the tools the model can call
+  asg runtime [install [--go]]  show or install the managed uv / Python 3.12 / Go
   asg update                 update to the latest release
   asg version
 
@@ -142,6 +147,8 @@ func main() {
 		skillCmd(app, args[1:])
 	case len(args) > 0 && args[0] == "tool":
 		toolCmd(app, args[1:])
+	case len(args) > 0 && args[0] == "runtime":
+		runtimeCmd(args[1:])
 	case *prompt != "":
 		oneShot(app, *prompt, args, startMode, *verify)
 	default:
@@ -190,14 +197,86 @@ func toolCmd(app *agent.App, args []string) {
 		fmt.Printf("\nscript tool folders: %s\n", strings.Join(agent.ToolDirs(), ", "))
 		return
 	}
-	if args[0] != "new" || len(args) < 2 {
-		fatal(fmt.Errorf("usage: asg tool new <name> | asg tool list"))
+	const toolUsage = "usage: asg tool new <name> [--python|--go] | add <source> | setup <name> | list"
+	if len(args) < 2 {
+		fatal(errors.New(toolUsage))
 	}
-	dir, err := tools.ScaffoldScriptTool(agent.ToolDirs()[1], args[1])
-	if err != nil {
-		fatal(err)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	ctx = tools.WithProgress(ctx, func(m string) { logger.Info(m) })
+	switch args[0] {
+	case "new", "create":
+		lang := tools.LangPython
+		for _, a := range args[2:] {
+			lang = strings.TrimLeft(a, "-")
+		}
+		dir, err := tools.ScaffoldTool(agent.ToolDirs()[1], args[1], lang)
+		if err != nil {
+			fatal(err)
+		}
+		fmt.Printf("created %s — edit tool.json and the code (see tools/README.md)\n", dir)
+	case "add", "import", "install":
+		got, err := tools.ImportTools(ctx, args[1], agent.ToolDirs()[1])
+		if err != nil {
+			fatal(err)
+		}
+		for _, t := range got {
+			fmt.Printf("installed %s → %s\n", t.Name, t.Dir)
+			// Install the tool's runtime and libraries now, so its first
+			// call doesn't have to.
+			if err := tools.PrepareScriptTool(ctx, t.Dir); err != nil {
+				logger.Warn("could not set up "+t.Name+" yet; it will retry on first run", "err", err)
+			}
+		}
+	case "setup", "prepare":
+		t := app.Tools.Get(args[1])
+		if t == nil || t.Source == "builtin" || t.Source == "bundled" {
+			fatal(fmt.Errorf("no script tool %q", args[1]))
+		}
+		if err := tools.PrepareScriptTool(ctx, t.Source); err != nil {
+			fatal(err)
+		}
+		fmt.Println(args[1], "is ready")
+	default:
+		fatal(errors.New(toolUsage))
 	}
-	fmt.Printf("created %s — edit tool.json and run.py (see tools/README.md)\n", dir)
+}
+
+// runtimeCmd shows or installs the managed runtime script tools run on.
+func runtimeCmd(args []string) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+	rt := runtimes.Default()
+	if len(args) > 0 && args[0] == "install" {
+		say := func(m string) { logger.Info(m) }
+		if err := rt.EnsurePython(ctx, say); err != nil {
+			fatal(err)
+		}
+		if len(args) > 1 && strings.TrimLeft(args[1], "-") == "go" {
+			if _, err := rt.Go(ctx, say); err != nil {
+				fatal(err)
+			}
+		}
+	} else if len(args) > 0 {
+		fatal(errors.New("usage: asg runtime [install [--go]]"))
+	}
+	st := rt.Status(ctx)
+	orNone := func(s string) string {
+		if s == "" {
+			return "not installed"
+		}
+		return s
+	}
+	fmt.Printf("runtime folder  %s\n", st.Home)
+	fmt.Printf("uv              %s\n", orNone(st.UV))
+	fmt.Printf("python %s     %s\n", runtimes.PythonVersion, orNone(st.Python))
+	goLine := orNone(st.Go)
+	if st.Go != "" && !st.GoManaged {
+		goLine += " (from PATH)"
+	} else if st.Go == "" {
+		goLine += " (installed on first use of a Go tool)"
+	}
+	fmt.Printf("go              %s\n", goLine)
 }
 
 func sourceLabel(src string) string {

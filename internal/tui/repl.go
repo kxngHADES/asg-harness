@@ -24,7 +24,6 @@ import (
 	"github.com/kxngHADES/asg-harness/internal/dashboard"
 	"github.com/kxngHADES/asg-harness/internal/llm"
 	"github.com/kxngHADES/asg-harness/internal/media"
-	itools "github.com/kxngHADES/asg-harness/internal/tools"
 	"github.com/kxngHADES/asg-harness/tools/computer"
 )
 
@@ -95,7 +94,8 @@ var commands = []command{
 	{"/skills", "", "list installed skills"},
 	{"/skill", "add <src> | rm <name> | show <name>", "import a skill (path, URL, github:owner/repo[/path]) or remove one"},
 	{"/tools", "", "list tools the model can call (reloads script tools)"},
-	{"/tool", "new <name>", "create a script tool in ~/.asg/tools (see tools/README.md)"},
+	{"/tool", "new <name> [python|go] | add <src> | setup <name>", "create a Python or Go tool, import tools (folder, github:owner/repo), or install a tool's libraries"},
+	{"/runtime", "[install [go]]", "show or install the managed uv, Python 3.12 and Go that tools run on"},
 	{"/computer", "[on|off|status|monitor <n>|approval <level>]", "live computer use: let ASG see the screen and use your mouse and keyboard"},
 	{"/yolo", "", "toggle YOLO: run tools without asking (or press ctrl+y)"},
 	{"/config", "", "show config file location and active settings"},
@@ -650,17 +650,9 @@ func (r *REPL) command(line string) (quit bool) {
 	case "/tools":
 		r.listTools()
 	case "/tool":
-		if len(args) < 2 || args[0] != "new" {
-			r.printf("usage: /tool new <name>  — creates a script tool in %s", agent.ToolDirs()[1])
-			return
-		}
-		dir, err := itools.ScaffoldScriptTool(agent.ToolDirs()[1], args[1])
-		if err != nil {
-			r.printf("%s", red(err.Error()))
-			return
-		}
-		r.app.ReloadTools()
-		r.printf("  %s — edit tool.json and run.py, then /tools to reload", green("✓ created "+dir))
+		r.toolCommand(ctx, args)
+	case "/runtime":
+		r.runtimeCommand(ctx, args)
 	case "/domain", "/domains":
 		if len(args) == 0 {
 			r.pickDomain()

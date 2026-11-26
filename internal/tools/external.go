@@ -19,28 +19,47 @@ import (
 )
 
 // Script tools let anyone add a tool without recompiling ASG: a folder
-// holding tool.json plus whatever script it runs, in any language.
+// holding tool.json plus the program it runs. Python and Go tools run on
+// ASG's managed runtime (uv + Python 3.12, and Go), so they work without the
+// user installing anything:
 //
 //	{
 //	  "name": "word_count",
 //	  "description": "Count words in a file",
 //	  "parameters": {"type": "object", "required": ["path"],
 //	                 "properties": {"path": {"type": "string"}}},
-//	  "command": ["python", "{dir}/run.py"],
+//	  "runtime": "python",
+//	  "entry": "main.py",
 //	  "needs_approval": false,
 //	  "timeout": 60
 //	}
 //
+// A Python tool may declare dependencies in pyproject.toml, requirements.txt
+// or PEP 723 inline metadata, or just import them (ASG reads the imports of
+// a bare script); they are installed on first run into the tool's own
+// virtual environment. A Go tool is a module (go.mod + main.go),
+// built on first run. Any other program can run through "command".
+//
 // The tool's arguments arrive as JSON on stdin (and in $ASG_TOOL_ARGS);
-// whatever the command prints is the result. A non-zero exit is an error.
-// {dir} in the command is replaced with the tool's folder.
+// whatever the program prints is the result. A non-zero exit is an error.
+// {dir} in command, entry and args is replaced with the tool's folder.
 
 // Manifest is the content of a tool.json file.
 type Manifest struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
 	Parameters  map[string]any `json:"parameters"`
-	Command     []string       `json:"command"`
+	// Runtime is "python" or "go". Empty means: use Command if given, else
+	// guess from the files in the folder.
+	Runtime string `json:"runtime,omitempty"`
+	// Entry is the Python script (default main.py) or Go package (default
+	// ".") relative to the tool folder.
+	Entry string `json:"entry,omitempty"`
+	// Args are extra command-line arguments for the entry.
+	Args []string `json:"args,omitempty"`
+	// Command runs any other program, e.g. ["node", "{dir}/index.js"].
+	// ["python", "x.py"] is run on the managed Python.
+	Command []string `json:"command,omitempty"`
 	// NeedsApproval defaults to true: a script can do anything.
 	NeedsApproval *bool `json:"needs_approval,omitempty"`
 	Timeout       int   `json:"timeout,omitempty"` // seconds, default 120
@@ -84,22 +103,68 @@ func LoadScriptTools(dirs ...string) ([]*Tool, []error) {
 	return out, errs
 }
 
-// LoadScriptTool loads the tool in dir.
-func LoadScriptTool(dir string) (*Tool, error) {
+// readManifest reads dir/tool.json and resolves how the tool runs: a
+// Project for Python and Go tools, or a plain command.
+func readManifest(dir string) (Manifest, *Project, error) {
 	path := filepath.Join(dir, "tool.json")
+	var m Manifest
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return m, nil, err
 	}
-	var m Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return m, nil, fmt.Errorf("%s: %w", path, err)
 	}
 	if !reToolName.MatchString(m.Name) {
-		return nil, fmt.Errorf("%s: name %q must be letters, digits, _ or -", path, m.Name)
+		return m, nil, fmt.Errorf("%s: name %q must be letters, digits, _ or -", path, m.Name)
 	}
-	if len(m.Command) == 0 {
-		return nil, fmt.Errorf("%s: command is empty", path)
+	abs, _ := filepath.Abs(dir)
+	sub := func(s string) string { return strings.ReplaceAll(s, "{dir}", abs) }
+	lang := strings.ToLower(strings.TrimSpace(m.Runtime))
+	entry := sub(m.Entry)
+	args := subAll(m.Args, sub)
+	if lang == "" && len(m.Command) >= 2 && isPythonCommand(m.Command[0]) && strings.HasSuffix(m.Command[1], ".py") {
+		// ["python", "{dir}/run.py", …]: run it on the managed Python
+		// instead of whatever "python" happens to be on PATH.
+		lang, entry = LangPython, sub(m.Command[1])
+		args = append(subAll(m.Command[2:], sub), args...)
+	}
+	if lang == "" && len(m.Command) == 0 {
+		lang = detectLang(abs)
+		if lang == "" {
+			return m, nil, fmt.Errorf(`%s: set "runtime" (python or go) or "command"`, path)
+		}
+	}
+	if lang == "" {
+		return m, nil, nil
+	}
+	if lang != LangPython && lang != LangGo {
+		return m, nil, fmt.Errorf("%s: runtime %q is not supported (python or go)", path, m.Runtime)
+	}
+	if entry == "" {
+		entry = defaultEntry(abs, m.Name, lang)
+	}
+	return m, &Project{Name: m.Name, Dir: abs, Lang: lang, Entry: entry, Args: args}, nil
+}
+
+func isPythonCommand(c string) bool {
+	base := strings.TrimSuffix(strings.ToLower(filepath.Base(c)), ".exe")
+	return base == "python" || base == "python3" || base == "py"
+}
+
+func subAll(in []string, sub func(string) string) []string {
+	out := make([]string, len(in))
+	for i, s := range in {
+		out[i] = sub(s)
+	}
+	return out
+}
+
+// LoadScriptTool loads the tool in dir.
+func LoadScriptTool(dir string) (*Tool, error) {
+	m, proj, err := readManifest(dir)
+	if err != nil {
+		return nil, err
 	}
 	if m.Parameters == nil {
 		m.Parameters = map[string]any{"type": "object", "properties": map[string]any{}}
@@ -125,22 +190,47 @@ func LoadScriptTool(dir string) (*Tool, error) {
 			if len(raw) == 0 {
 				raw = json.RawMessage("{}")
 			}
-			return runScript(ctx, abs, m.Command, raw, timeout)
+			if proj == nil {
+				return runScript(ctx, abs, subAll(m.Command, func(s string) string { return strings.ReplaceAll(s, "{dir}", abs) }), nil, raw, timeout)
+			}
+			// Setup (runtime, dependencies, build) has its own, longer
+			// limit; the tool's timeout covers only the run itself.
+			return proj.Exec(ctx, abs, raw, timeout)
 		},
 	}, nil
 }
 
-func runScript(ctx context.Context, dir string, command []string, args json.RawMessage, timeout time.Duration) (string, error) {
+// PrepareScriptTool installs what the tool in dir needs (runtime,
+// dependencies, Go build) so its first call is fast. Command tools need
+// nothing and return nil.
+func PrepareScriptTool(ctx context.Context, dir string) error {
+	_, proj, err := readManifest(dir)
+	if err != nil || proj == nil {
+		return err
+	}
+	_, _, err = proj.Prepare(ctx)
+	return err
+}
+
+// ScriptToolLang reports "python", "go" or "" (a plain command) for the
+// tool in dir.
+func ScriptToolLang(dir string) string {
+	if _, proj, err := readManifest(dir); err == nil && proj != nil {
+		return proj.Lang
+	}
+	return ""
+}
+
+func runScript(ctx context.Context, dir string, argv, env []string, args []byte, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	argv := make([]string, len(command))
-	for i, a := range command {
-		argv[i] = strings.ReplaceAll(a, "{dir}", dir)
-	}
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	proc.Hide(cmd)
 	cmd.Stdin = bytes.NewReader(args)
-	cmd.Env = append(os.Environ(), "ASG_TOOL_ARGS="+string(args), "ASG_TOOL_DIR="+dir)
+	if env == nil {
+		env = os.Environ()
+	}
+	cmd.Env = append(env, "ASG_TOOL_ARGS="+string(args), "ASG_TOOL_DIR="+dir)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
@@ -162,48 +252,4 @@ func runScript(ctx context.Context, dir string, command []string, args json.RawM
 		out = "(no output)"
 	}
 	return truncate(out), nil
-}
-
-// ScaffoldScriptTool creates a starter script tool in dir/name.
-func ScaffoldScriptTool(dir, name string) (string, error) {
-	if !reToolName.MatchString(name) {
-		return "", fmt.Errorf("tool name %q must be letters, digits, _ or -", name)
-	}
-	tdir := filepath.Join(dir, name)
-	if _, err := os.Stat(tdir); err == nil {
-		return "", fmt.Errorf("%s already exists", tdir)
-	}
-	if err := os.MkdirAll(tdir, 0o755); err != nil {
-		return "", err
-	}
-	manifest := fmt.Sprintf(`{
-  "name": %q,
-  "description": "Describe what the tool does and when the model should use it.",
-  "parameters": {
-    "type": "object",
-    "required": ["text"],
-    "properties": {
-      "text": {"type": "string", "description": "Example input"}
-    }
-  },
-  "command": ["python", "{dir}/run.py"],
-  "needs_approval": true,
-  "timeout": 60
-}
-`, name)
-	script := `"""ASG script tool: arguments arrive as JSON on stdin; print the result."""
-import json
-import sys
-
-args = json.load(sys.stdin)
-text = args.get("text", "")
-print(f"received {len(text)} characters")
-`
-	if err := os.WriteFile(filepath.Join(tdir, "tool.json"), []byte(manifest), 0o644); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(filepath.Join(tdir, "run.py"), []byte(script), 0o644); err != nil {
-		return "", err
-	}
-	return tdir, nil
 }

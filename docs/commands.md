@@ -82,7 +82,10 @@
 | Command | Does |
 |---|---|
 | `/tools` | list tools (reloads script tools) |
-| `/tool new <name>` | create a script tool in `~/.asg/tools` |
+| `/tool new <name> [python\|go]` | create a Python or Go tool in `~/.asg/tools` |
+| `/tool add <source>` | import tools from a folder or GitHub and install their libraries |
+| `/tool setup <name>` | install a tool's runtime and libraries now |
+| `/runtime [install [go]]` | show or install the managed uv, Python 3.12 and Go |
 | `/skills` | list installed skills |
 | `/skill add <src>` | import a skill (path, URL, `github:owner/repo[/path]`) |
 | `/skill rm <name>`, `/skill show <name>` | remove / show a skill |

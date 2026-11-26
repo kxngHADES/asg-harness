@@ -100,7 +100,7 @@ a browser prompt there. Set `ASG_HOME` to a scratch folder to keep test data apa
 | **Code** | Coding sessions grouped by folder with the current git branch. **Resume** reopens the full history; the agent keeps its plan and working files (`plan.md`, `checklist.md`, …) which show in the session's side panel. |
 | **Artifacts** | Every file a session wrote (`write_file`, `office_document`) is snapshotted, so it survives the original being changed or deleted. Writing the same file again adds a version. Pages and SVGs preview live (HTML runs in a sandboxed frame), Markdown renders, code is highlighted; Office files open in their own app. Coding sessions only keep documents and images, not every source file. |
 | **Schedules** | A prompt that runs every N minutes, hourly, daily, on weekdays or weekly. Each run is its own session (clock icon). Runs only while the app is open; a run missed while it was closed runs once on the next start. Nobody can answer a permission prompt during a scheduled run, so gated tools are skipped unless you turn on **Allow tools**. |
-| **Customise** | Providers and models, global instructions, skills (create / import / remove; the built-in `/design-first-dev` and `/frontend-design` are tagged **Built-in**), tools, memory notes, **computer use** (on/off, permission level, monitor, excluded apps, vision model, limits) and behaviour (auto-approve, tool rounds, self-review passes, temperature). |
+| **Customise** | Providers and models, global instructions, skills (create / import / remove; the built-in `/design-first-dev` and `/frontend-design` are tagged **Built-in**), tools (**Add tool** from a folder or GitHub, **New tool** in Python or Go, **Set up** to install a tool's libraries, and the **Tool runtime** status), memory notes, **computer use** (on/off, permission level, monitor, excluded apps, vision model, limits) and behaviour (auto-approve, tool rounds, self-review passes, temperature). |
 | **Settings** | Theme, the tray, **Updates** and **Storage & sandbox** (below). |
 
 ### Domains
@@ -123,6 +123,14 @@ and keyboard ([Computer use](computer-use.md)). While it does, a banner at the
 top shows the last action with **Pause** / **Resume** and **Stop**; on Windows
 **Esc** stops it too, and moving the mouse yourself pauses it. The phone app can
 stop it as well.
+
+### Tool runtime
+
+Python and Go tools run on a runtime the app owns ([Tools](tools.md#the-runtime)). On a new
+install and after every update, ASG installs uv and Python 3.12 into `~/.asg/runtime` in the
+background (a notice says when it's ready); Go is installed only when a Go tool first needs it.
+**Customise → Tools → Tool runtime** shows what's installed, with **Install or repair** and
+**Install Go**. Set `ASG_NO_RUNTIME_BOOTSTRAP=1` to skip the startup setup.
 
 Session icons: speech bubble = chat, terminal = code, sparkles = artifact, folder = project
 chat, clock = scheduled run.

@@ -10,6 +10,7 @@ import (
 
 	"github.com/kxngHADES/asg-harness/internal/config"
 	"github.com/kxngHADES/asg-harness/internal/llm"
+	"github.com/kxngHADES/asg-harness/internal/tools"
 )
 
 const keyMask = "••••"
@@ -158,12 +159,18 @@ type ToolInfo struct {
 	Description   string `json:"description"`
 	NeedsApproval bool   `json:"needs_approval"`
 	Source        string `json:"source"`
+	// Lang is "python" or "go" for tools on the managed runtime.
+	Lang string `json:"lang,omitempty"`
 }
 
 func (a *App) ListTools() []ToolInfo {
 	out := []ToolInfo{}
 	for _, t := range a.core.Tools.All() {
-		out = append(out, ToolInfo{t.Spec.Name, t.Spec.Description, t.NeedsApproval, t.Source})
+		info := ToolInfo{Name: t.Spec.Name, Description: t.Spec.Description, NeedsApproval: t.NeedsApproval, Source: t.Source}
+		if t.Source != "builtin" && t.Source != "bundled" {
+			info.Lang = tools.ScriptToolLang(t.Source)
+		}
+		out = append(out, info)
 	}
 	return out
 }
