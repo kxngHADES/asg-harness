@@ -103,6 +103,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   rt().EventsOn("asg:schedules", () => { if (S.view.name === "schedules") renderView(); });
   rt().EventsOn("asg:model", (m) => { S.model = m; $$(".chip.model .ellip").forEach((el) => (el.textContent = modelLabel())); });
   rt().EventsOn("asg:computer", renderComputerBanner);
+  rt().EventsOn("asg:runtime", (e) => { toast(e.text, e.state === "error" ? "err" : ""); if (e.state !== "working") renderRuntimeStatus(); });
   rt().EventsOn("asg:toast", (t) => toast(t.text, "", t.session ? { label: "Open", fn: () => openSession(t.session) } : null));
   // Tray menu: open a view (and maybe run an update check).
   rt().EventsOn("asg:nav", (n) => {
@@ -1299,8 +1300,12 @@ async function renderCustBody() {
   if (t === "tools") {
     const tools = await api().ListTools();
     box.innerHTML = `<div class="section"><h3>Tools</h3><p>What ASG can do. Tools marked <span class="pill warn">asks first</span> wait for your permission unless you've allowed them.</p>
-      <div class="inline" style="margin-bottom:14px"><button class="btn" data-act="reload-tools">${icon("refresh")}Reload script tools</button></div>
-      <div class="list-box">${tools.map((x) => `<div class="li"><span class="kind k-code">${icon("wrench")}</span><div class="t"><b>${esc(x.name)}</b><span>${esc(x.description)}</span></div>${x.needs_approval ? `<span class="pill warn">asks first</span>` : `<span class="pill ok">safe</span>`}<span class="pill">${esc(x.source)}</span></div>`).join("")}</div></div>`;
+      <div class="inline" style="margin-bottom:14px"><button class="btn" data-act="import-tool">${icon("download")}Add tool</button><button class="btn" data-act="new-tool">${icon("plus")}New tool</button><button class="btn" data-act="reload-tools">${icon("refresh")}Reload script tools</button></div>
+      <div class="list-box">${tools.map((x) => `<div class="li"><span class="kind k-code">${icon("wrench")}</span><div class="t"><b>${esc(x.name)}</b><span>${esc(x.description)}</span></div>${x.lang ? `<span class="pill">${esc(x.lang === "go" ? "Go" : "Python")}</span><button class="btn sm ghost" data-preptool="${esc(x.name)}" title="Install its runtime and libraries now">Set up</button>` : ""}${x.needs_approval ? `<span class="pill warn">asks first</span>` : `<span class="pill ok">safe</span>`}<span class="pill">${esc(sourceLabel(x.source))}</span></div>`).join("")}</div></div>
+      <div class="section"><h3>Tool runtime</h3><p>Python and Go tools run on a runtime ASG manages itself: uv with Python ${PY_VERSION}, and Go when a Go tool needs it. Each tool gets its own environment and its libraries are installed on first run.</p>
+      <div class="list-box" id="rt-status"><div class="panel-empty">Checking…</div></div>
+      <div class="inline" style="margin-top:12px"><button class="btn" data-act="install-runtime">${icon("download")}Install or repair</button><button class="btn" data-act="install-go">${icon("download")}Install Go</button></div></div>`;
+    renderRuntimeStatus();
     return;
   }
   if (t === "memory") {
@@ -1310,6 +1315,20 @@ async function renderCustBody() {
       ${notes.length ? `<div class="list-box">${notes.map((n) => `<div class="li"><span class="kind k-chat">${icon("bulb")}</span><div class="t"><b>${esc(n.name)}</b><span>${esc(n.summary)}</span></div><span class="pill">${esc(n.scope)}</span><button class="btn sm ghost" data-viewmem="${esc(n.scope)}|${esc(n.name)}">View</button><button class="icon-btn" data-rmmem="${esc(n.scope)}|${esc(n.name)}" title="Delete">${icon("trash", "sm")}</button></div>`).join("")}</div>` : `<div class="panel-empty">No memories yet.</div>`}</div>`;
     S.notes = notes;
   }
+}
+
+const PY_VERSION = "3.12";
+const sourceLabel = (src) => (src === "builtin" || src === "bundled" ? src : "script");
+
+async function renderRuntimeStatus() {
+  const box = $("#rt-status");
+  if (!box) return;
+  let st;
+  try { st = await api().RuntimeStatus(); } catch (e) { box.innerHTML = `<div class="panel-empty">${esc(errText(e))}</div>`; return; }
+  const row = (name, val, missing) => `<div class="li"><span class="kind k-code">${icon("cpu")}</span><div class="t"><b>${name}</b><span class="mono">${esc(val || missing)}</span></div>${val ? `<span class="pill ok">ready</span>` : `<span class="pill warn">missing</span>`}</div>`;
+  if (!$("#rt-status")) return;
+  box.innerHTML = row("uv", st.uv, "Not installed yet") + row(`Python ${PY_VERSION}`, st.python, "Not installed yet") +
+    row("Go", st.go ? st.go + (st.go_managed ? "" : " (from PATH)") : "", "Installed the first time a Go tool runs");
 }
 
 function collectProviders() {
@@ -1730,6 +1749,7 @@ async function onGlobalClick(e) {
   if ((el = q("[data-rmprov]"))) { const cfg = collectProviders(); if (Object.keys(cfg.providers).length < 2) return toast("Keep at least one provider", "err"); if (!(await confirmBox(`Remove ${el.dataset.rmprov}?`, "Its settings and key are deleted from the config.", "Remove"))) return; delete cfg.providers[el.dataset.rmprov]; S.cfg = await call("SaveConfig", cfg); return renderCustBody(); }
   if ((el = q("[data-pickmodel]"))) return pickModelFor(el.dataset.pickmodel);
   if ((el = q("[data-viewskill]"))) { const s = await call("GetSkill", el.dataset.viewskill); const html = await api().RenderMarkdown(s.body); modal({ title: "/" + s.name, wide: true, body: `<p style="color:var(--muted);margin-top:0">${esc(s.description)}</p><div class="md selectable" style="max-height:50vh;overflow:auto">${html}</div><p class="hint" style="font-size:12px;color:var(--faint)">${s.builtin ? "Built-in: ships with ASG. Create a skill with the same name to replace it." : esc(s.dir)}</p>`, actions: [{ label: "Close" }] }); return; }
+  if ((el = q("[data-preptool]"))) { const n = el.dataset.preptool; el.disabled = true; toast(`Setting up ${n}…`); try { await api().PrepareTool(n); } catch (e) { toast(`${n}: ${errText(e)}`, "err"); } el.disabled = false; return; }
   if ((el = q("[data-rmskill]"))) { if (await confirmBox(`Remove /${el.dataset.rmskill}?`, "The skill's folder is deleted.", "Remove")) { await call("DeleteSkill", el.dataset.rmskill); S.skills = null; renderCustBody(); } return; }
   if ((el = q("[data-viewmem]"))) { const [sc, n] = el.dataset.viewmem.split("|"); const note = S.notes.find((x) => x.scope === sc && x.name === n); const html = await api().RenderMarkdown(note?.body || ""); modal({ title: n, body: `<div class="md selectable">${html}</div>`, actions: [{ label: "Close" }] }); return; }
   if ((el = q("[data-rmmem]"))) { const [sc, n] = el.dataset.rmmem.split("|"); if (await confirmBox(`Forget “${n}”?`, "ASG won't see this note any more.", "Delete")) { await call("DeleteMemory", sc, n); renderCustBody(); } return; }
@@ -1821,6 +1841,35 @@ async function onGlobalClick(e) {
       body: `<div class="field"><label>Source</label><input class="input mono" id="sk-src" placeholder="github.com/owner/repo, a URL to SKILL.md, or a local folder"><span class="hint">Every skill found is installed.</span></div>`,
       actions: [{ label: "Cancel" }, { label: "Import", cls: "primary", fn: async () => { const got = await call("ImportSkill", $("#sk-src").value); toast(`Imported ${got?.length || 0} skill(s)`); S.skills = null; renderCustBody(); return true; } }],
     });
+    case "import-tool": return modal({
+      title: "Add tools",
+      body: `<div class="field"><label>Source</label><input class="input mono" id="tl-src" placeholder="github.com/owner/repo, github:owner/repo/path, or a local folder"><span class="hint">Every folder with a tool.json is installed into ~/.asg/tools, then its libraries are set up.</span></div>`,
+      actions: [{ label: "Cancel" }, { label: "Add", cls: "primary", fn: async () => {
+        const got = await call("ImportTool", $("#tl-src").value);
+        toast(`Added ${got?.length || 0} tool(s) — setting them up…`);
+        renderCustBody();
+        (async () => { for (const n of got || []) { try { await api().PrepareTool(n); } catch (e) { toast(`${n}: ${errText(e)}`, "err"); } } })();
+        return true;
+      } }],
+    });
+    case "new-tool": return modal({
+      title: "New tool",
+      body: `<div class="row2"><div class="field"><label>Name</label><input class="input mono" id="tl-name" placeholder="word_count"></div><div class="field"><label>Language</label><select class="input" id="tl-lang"><option value="python">Python ${PY_VERSION}</option><option value="go">Go</option></select></div></div>
+        <span class="hint">Creates tool.json plus a starter project in ~/.asg/tools. Python libraries go in pyproject.toml; Go modules in go.mod.</span>`,
+      actions: [{ label: "Cancel" }, { label: "Create", cls: "primary", fn: async () => {
+        const dir = await call("NewTool", $("#tl-name").value, $("#tl-lang").value);
+        toast(`Created ${$("#tl-name").value.trim()} in ~/.asg/tools`, "", { label: "Open folder", fn: () => api().OpenPath(dir) });
+        renderCustBody();
+        return true;
+      } }],
+    });
+    case "install-runtime":
+    case "install-go": {
+      const withGo = act === "install-go";
+      toast(withGo ? "Installing Go…" : "Installing uv and Python…");
+      try { await api().InstallRuntime(withGo); } catch (e) { toast(errText(e), "err"); }
+      return renderRuntimeStatus();
+    }
     case "reload-tools": { const { errors: errs } = await api().ReloadTools(); if (errs?.length) toast(errs.join("; "), "err"); else toast("Tools reloaded"); return renderCustBody(); }
     case "new-memory": return modal({
       title: "Add memory",

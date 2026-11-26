@@ -89,6 +89,8 @@ func (a *App) startup(ctx context.Context) {
 	a.stopComputer = a.startComputer()
 	a.stopUpd = make(chan struct{})
 	a.startUpdateChecks()
+	// New install or just updated: make sure tools have uv + Python 3.12.
+	go a.bootstrapRuntime()
 	if addr := os.Getenv("ASG_MOBILE_ADDR"); addr != "off" {
 		a.netBridge = newNetworkBridge(a, addr)
 		_ = a.netBridge.start()

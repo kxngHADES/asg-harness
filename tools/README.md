@@ -7,7 +7,7 @@ document. ASG has three kinds, and this folder is home to the shared ones.
 |------|----------------|-------------|----------------|
 | **Built-in** | `internal/tools` | everyone | core file / shell / web tools; rarely changed |
 | **Bundled** | this folder (`tools/<name>/`) | everyone — compiled into `asg` | a Go package, registered in `tools.go` |
-| **Script** | `~/.asg/tools/<name>/` (you) or `<project>/.asg/tools/<name>/` (that project) | whoever has the folder | a `tool.json` plus a script in any language |
+| **Script** | `~/.asg/tools/<name>/` (you), `<project>/.asg/tools/<name>/` (that project) or `<skill>/tools/<name>/` | whoever has the folder | a `tool.json` plus a Python or Go project (or any command) |
 
 `/tools` in the terminal lists every tool and where it came from, and
 reloads script tools so you can edit them without restarting.
@@ -34,8 +34,9 @@ for everyone on every platform.
 
 ## Script tools
 
-A folder with a `tool.json` — no Go, no rebuild. `asg tool new <name>`
-(or `/tool new <name>` in the terminal) scaffolds one in `~/.asg/tools`.
+A folder with a `tool.json` — no rebuild. `asg tool new <name> [--go]` (or
+`/tool new <name> [go]` in the terminal) scaffolds a Python or Go tool in
+`~/.asg/tools`; `asg tool add <folder|github:owner/repo[/path]>` imports them.
 
 ```json
 {
@@ -46,16 +47,25 @@ A folder with a `tool.json` — no Go, no rebuild. `asg tool new <name>`
     "required": ["path"],
     "properties": { "path": { "type": "string", "description": "File to count" } }
   },
-  "command": ["python", "{dir}/run.py"],
+  "runtime": "python",
+  "entry": "main.py",
   "needs_approval": false,
   "timeout": 60
 }
 ```
 
+- `runtime` is `python` or `go`. Python tools run with `uv run` on ASG's
+  managed Python 3.12; libraries from `pyproject.toml`, `requirements.txt` or
+  PEP 723 inline metadata — or, for a plain script that declares nothing,
+  from its `import` lines ([infer_imports.py](../internal/tools/infer_imports.py)) —
+  are installed into the tool's own environment on first run. Go tools (`go.mod` + `main.go`) are built on first run with the
+  managed Go (installed on demand) and rebuilt when the source changes.
+  See [internal/runtimes](../internal/runtimes) and [docs/tools.md](../docs/tools.md).
+- `command` still runs any other program; `{dir}` is replaced with the tool's
+  folder. `["python", "{dir}/run.py"]` now runs on the managed Python.
 - The call's arguments arrive as JSON on **stdin** (and in `$ASG_TOOL_ARGS`).
-- Whatever the command prints to stdout is the result the model sees.
+- Whatever the program prints to stdout is the result the model sees.
 - A non-zero exit is reported to the model as an error, with stderr.
-- `{dir}` in `command` is replaced with the tool's folder.
 - `needs_approval` defaults to `true` — the user is asked before each run
   (or YOLO is on). Only set it to `false` for tools that change nothing.
 - A project tool (`.asg/tools`) wins over a user tool with the same name;

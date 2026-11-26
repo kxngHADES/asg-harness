@@ -140,7 +140,7 @@ install from GitHub, a URL or a folder with `asg skill add`. Two come built in:
 `/design-first-dev` and `/frontend-design`.
 
 **Tools.** Shell, files, glob, grep, web fetch, Word/PowerPoint/Excel output, browser screenshots,
-and your own script tools in any language (`asg tool new <name>`).
+and your own tools in Python or Go (`asg tool new <name> [--go]`, or `asg tool add github:owner/repo`), run on a uv + Python 3.12 / Go runtime ASG installs and manages itself.
 
 **Work folder.** In build and loop runs ASG keeps `plan.md`, `checklist.md`, `walkthrough.md` and a
 full `activity.md` log in `.asg/work/`, so you can see exactly what it did.
@@ -162,7 +162,7 @@ full `activity.md` log in `.asg/work/`, so you can see exactly what it did.
 | `/image <path>`, `/paste` | attach an image |
 | `/voice …`, `/speak` | voice output |
 | `/skills`, `/skill add\|rm\|show`, `/<skill> <request>` | skills |
-| `/tools`, `/tool new <name>` | list or scaffold tools |
+| `/tools`, `/tool new\|add\|setup`, `/runtime` | list, create, import or set up Python / Go tools |
 | `/review`, `/work`, `/yolo`, `/dashboard`, `/clear`, `/usage`, `/config`, `/exit` | |
 
 All of them, with arguments: [docs/commands.md](docs/commands.md).

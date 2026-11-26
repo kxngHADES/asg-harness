@@ -184,6 +184,7 @@ func Builtins() *Registry {
 	r.Add(globTool())
 	r.Add(grepTool())
 	r.Add(fetchTool())
+	r.Add(runScriptTool())
 	for _, t := range r.All() {
 		t.Source = "builtin"
 	}

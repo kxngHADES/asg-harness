@@ -73,7 +73,8 @@ func ToolDirs() []string {
 	return []string{filepath.Join(".asg", "tools"), filepath.Join(config.Dir(), "tools")}
 }
 
-// ReloadTools (re)loads script tools from ToolDirs. They never replace a
+// ReloadTools (re)loads script tools from ToolDirs and the tools/ folder
+// of every installed skill. They never replace a
 // built-in or bundled tool. It returns the manifests that failed to load.
 func (a *App) ReloadTools() []error {
 	for _, t := range a.Tools.All() {
@@ -81,7 +82,16 @@ func (a *App) ReloadTools() []error {
 			a.Tools.Remove(t.Spec.Name)
 		}
 	}
-	scripts, errs := tools.LoadScriptTools(ToolDirs()...)
+	// Skills can ship tools too: <skill>/tools/<name>/tool.json.
+	dirs := ToolDirs()
+	if a.Skills != nil {
+		for _, sk := range a.Skills.List() {
+			if sk.Dir != "" {
+				dirs = append(dirs, filepath.Join(sk.Dir, "tools"))
+			}
+		}
+	}
+	scripts, errs := tools.LoadScriptTools(dirs...)
 	for _, t := range scripts {
 		if a.Tools.Get(t.Spec.Name) == nil {
 			a.Tools.Add(t)
@@ -276,7 +286,7 @@ func SkillPrompt(sk *skills.Skill) string {
 	if sk.Dir == "" { // built-in: no folder on disk
 		return fmt.Sprintf("# Skill: %s\n\n%s", sk.Name, sk.Body)
 	}
-	return fmt.Sprintf("# Skill: %s\n(Skill files live in %s — read any referenced files from there.)\n\n%s", sk.Name, sk.Dir, sk.Body)
+	return fmt.Sprintf("# Skill: %s\n(Skill files live in %s — read any referenced files from there. Run its Python or Go scripts with the run_script tool, which installs the libraries they import; use bash only for other commands.)\n\n%s", sk.Name, sk.Dir, sk.Body)
 }
 
 func (s *Session) toolset() []*tools.Tool {
@@ -547,6 +557,9 @@ func (s *Session) runTool(ctx context.Context, call llm.ToolCall, byName map[str
 		}
 	}
 	ev.ToolStart(call, summary)
+	// First runs of Python / Go tools may download a runtime or install
+	// dependencies; say so instead of looking stuck.
+	ctx = tools.WithProgress(ctx, ev.Notice)
 	var out string
 	var err error
 	if t.RunMedia != nil {

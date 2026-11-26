@@ -9,7 +9,10 @@ asg -loop -yolo -p "goal"    # run an objective with the loop harness, unattende
 asg dashboard [-no-open]     # browser dashboard on 127.0.0.1
 asg skill add <source>       # import skills (path, URL, github:owner/repo[/path])
 asg skill list | rm <name>
-asg tool new <name>          # create a script tool in ~/.asg/tools
+asg tool new <name> [--go]   # create a Python (or Go) tool in ~/.asg/tools
+asg tool add <source>        # import tools (folder, github:owner/repo[/path], GitHub URL)
+asg tool setup <name>        # install a tool's runtime and libraries now
+asg runtime [install [--go]] # show or install the managed uv / Python 3.12 / Go
 asg tool list                # list the tools the model can call
 asg update                   # update to the latest release
 asg version
@@ -100,6 +103,7 @@ terminal, `asg` flags and the dashboard all edit the same file.
 | `~/.asg/permissions.json` | remembered "always allow" rules |
 | `~/.asg/loops/` | saved loop runs (`/loop resume`) |
 | `~/.asg/tools/` | your script tools |
+| `~/.asg/runtime/` | managed uv, Python 3.12, Go, per-tool environments and Go builds |
 | `~/.asg/skills/` | installed skills |
 | `<project>/ASG.md` | project instructions (`/init`) |
 | `<project>/.asg/tools/` | the project's script tools |
