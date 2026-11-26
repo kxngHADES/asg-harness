@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/kxngHADES/asg-harness/compare/v0.8.0...v0.9.0) (2026-11-26)
+
+
+### Features
+
+* Python and Go tools on a managed uv / Python 3.12 / Go runtime ([#54](https://github.com/kxngHADES/asg-harness/issues/54)) ([a76b1de](https://github.com/kxngHADES/asg-harness/commit/a76b1de8ec3d452f32a081616a27d6dc0e271aeb))
+
 ## [0.8.0](https://github.com/kxngHADES/asg-harness/compare/v0.7.0...v0.8.0) (2026-11-26)
 
 
