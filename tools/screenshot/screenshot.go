@@ -89,7 +89,7 @@ func run(ctx context.Context, raw json.RawMessage) (string, []llm.Image, error) 
 	what := a.Target
 	var err error
 	if strings.EqualFold(a.Target, "screen") {
-		err = captureScreen(ctx, out)
+		err = CaptureScreen(ctx, out)
 	} else {
 		var u string
 		u, err = pageURL(a.Target, dir)
@@ -211,7 +211,9 @@ func capturePage(ctx context.Context, u, out string, w, h int) error {
 	return fmt.Errorf("browser could not screenshot %s: %v %s", u, err, strings.TrimSpace(string(msg)))
 }
 
-func captureScreen(ctx context.Context, out string) error {
+// CaptureScreen saves a PNG of the whole screen to out using the platform's
+// screenshot program.
+func CaptureScreen(ctx context.Context, out string) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	var attempts [][]string
@@ -267,7 +269,7 @@ func load(path string) (llm.Image, int, int, error) {
 		return llm.Image{MediaType: "image/png", Data: data}, w, h, nil
 	}
 	scale := min(float64(maxSide)/float64(w), 8000/float64(h), 1)
-	small := shrink(src, max(int(float64(w)*scale), 1), max(int(float64(h)*scale), 1))
+	small := Shrink(src, max(int(float64(w)*scale), 1), max(int(float64(h)*scale), 1))
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, small); err != nil {
 		return llm.Image{}, 0, 0, err
@@ -284,9 +286,9 @@ func load(path string) (llm.Image, int, int, error) {
 	return llm.Image{MediaType: mt, Data: buf.Bytes()}, sb.Dx(), sb.Dy(), nil
 }
 
-// shrink scales src down to w×h by averaging the source pixels that fall
+// Shrink scales src down to w×h by averaging the source pixels that fall
 // into each destination pixel.
-func shrink(src image.Image, w, h int) *image.RGBA {
+func Shrink(src image.Image, w, h int) *image.RGBA {
 	b := src.Bounds()
 	dst := image.NewRGBA(image.Rect(0, 0, w, h))
 	sw, sh := b.Dx(), b.Dy()

@@ -107,6 +107,9 @@ func (r *REPL) statusStrip(width int) string {
 	if r.yolo() {
 		b.WriteString(" " + badge(colAmber, "⚡ YOLO"))
 	}
+	if cb := computerBadge(r.computerState()); cb != "" {
+		b.WriteString(" " + cb)
+	}
 	if n := r.pendingCount(); n > 0 {
 		b.WriteString(" " + magenta(fmt.Sprintf("▣ %d img", n)))
 	}

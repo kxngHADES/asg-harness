@@ -13,6 +13,7 @@ examples for each way of working.
 | [Self-review and questions](review-and-questions.md) | The 4+ review passes after every answer, and how ASG stops to ask you things |
 | [Work folder](work-folder.md) | The plan, checklist, walkthrough and activity log ASG writes while it works |
 | [Tools](tools.md) | The tools the model can call, Word/PowerPoint/Excel output, screenshots, and adding your own tools |
+| [Computer use](computer-use.md) | Letting ASG see the screen and use your real mouse and keyboard — safely |
 | [Permissions and YOLO](permissions.md) | Approval gates, "always allow", and running without asking |
 | [Command reference](commands.md) | Every slash command and key on one page |
 | [Command line and config](cli-and-config.md) | `asg` flags, one-shot and unattended runs, `~/.asg/config.json` |

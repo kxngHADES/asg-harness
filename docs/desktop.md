@@ -94,14 +94,35 @@ a browser prompt there. Set `ASG_HOME` to a scratch folder to keep test data apa
 
 | Area | What it does |
 |---|---|
-| **New chat** | One composer with three kinds: **Chat**, **Code** (pick a folder) and **Artifact**. Optional project. Mode (Build / Plan / Ask), model, image attachments (paste or drop), and `/skill` to run a skill. |
+| **New chat** | One composer with three kinds: **Chat**, **Code** (pick a folder) and **Artifact**. Optional project. Mode (Build / Plan / Ask), **domain** (software, docs, cyber, devops, pm and their flavors — see below), model, image attachments (paste or drop), and `/skill` to run a skill. |
 | **Chats** | Every session, grouped by day, filterable by kind, searchable. Pin, rename, move to a project or delete from the `…` menu. |
 | **Projects** | Instructions added to every chat in the project, an optional folder to work in (otherwise a shared private folder), the project's chats and artifacts. |
 | **Code** | Coding sessions grouped by folder with the current git branch. **Resume** reopens the full history; the agent keeps its plan and working files (`plan.md`, `checklist.md`, …) which show in the session's side panel. |
 | **Artifacts** | Every file a session wrote (`write_file`, `office_document`) is snapshotted, so it survives the original being changed or deleted. Writing the same file again adds a version. Pages and SVGs preview live (HTML runs in a sandboxed frame), Markdown renders, code is highlighted; Office files open in their own app. Coding sessions only keep documents and images, not every source file. |
 | **Schedules** | A prompt that runs every N minutes, hourly, daily, on weekdays or weekly. Each run is its own session (clock icon). Runs only while the app is open; a run missed while it was closed runs once on the next start. Nobody can answer a permission prompt during a scheduled run, so gated tools are skipped unless you turn on **Allow tools**. |
-| **Customise** | Providers and models, global instructions, skills (create / import / remove; the built-in `/design-first-dev` and `/frontend-design` are tagged **Built-in**), tools, memory notes, and behaviour (auto-approve, tool rounds, self-review passes, temperature). |
+| **Customise** | Providers and models, global instructions, skills (create / import / remove; the built-in `/design-first-dev` and `/frontend-design` are tagged **Built-in**), tools, memory notes, **computer use** (on/off, permission level, monitor, excluded apps, vision model, limits) and behaviour (auto-approve, tool rounds, self-review passes, temperature). |
 | **Settings** | Theme, the tray, **Updates** and **Storage & sandbox** (below). |
+
+### Domains
+
+The domain chip next to the mode chip picks **what kind of work** a chat is —
+the same tracks the terminal cycles with `ctrl+t` and `/domain`: software
+(project / work / hobby), docs (update / write), cyber (red / blue), devops
+(review / pipeline) and pm (plan / sprint / status). Each brings its own loop,
+rules and self-review angles ([Domains](domains.md)).
+
+- On the home screen it sets the domain new chats start in. That default is
+  saved to `~/.asg/config.json`, so the terminal starts there too.
+- In an open chat it switches that chat only; the next message follows the new
+  domain's loop (a new domain gets a fresh work folder). The chat header shows it.
+
+### Computer use
+
+With **Customise → Computer use** on, ASG can see your screen and use the mouse
+and keyboard ([Computer use](computer-use.md)). While it does, a banner at the
+top shows the last action with **Pause** / **Resume** and **Stop**; on Windows
+**Esc** stops it too, and moving the mouse yourself pauses it. The phone app can
+stop it as well.
 
 Session icons: speech bubble = chat, terminal = code, sparkles = artifact, folder = project
 chat, clock = scheduled run.

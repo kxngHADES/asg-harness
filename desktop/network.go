@@ -57,6 +57,14 @@ var allowedRemoteMethods = map[string]bool{
 	"SetModel":             true,
 	"ListModels":           true,
 	"RenderMarkdown":       true,
+	"ListDomains":          true,
+	"SetSessionTrack":      true,
+	"SetDefaultTrack":      true,
+	// The phone can watch and stop computer use, but not change its settings.
+	"ComputerInfo":   true,
+	"ComputerPause":  true,
+	"ComputerResume": true,
+	"ComputerStop":   true,
 }
 
 type networkInfo struct {

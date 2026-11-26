@@ -96,6 +96,9 @@ own with the same name in `~/.asg/skills` replaces the built-in one.
 | `/memory <note>` | ask ASG to remember something |
 | `/permissions` | review and revoke "always allow" rules |
 | `/yolo` | toggle YOLO |
+| `/computer [on\|off\|status]` | [computer use](computer-use.md): let ASG see the screen and use your mouse and keyboard |
+| `/computer monitor <n>` | the monitor it works on (`0` primary, `-1` all) |
+| `/computer approval actions\|every\|auto` | what asks first (sensitive actions always ask) |
 
 ## Voice
 

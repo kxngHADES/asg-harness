@@ -1,6 +1,8 @@
 // Line icons (24px grid, drawn with currentColor). icon("name", "sm") returns SVG markup.
 const ICONS = {
   plus: '<path d="M12 5v14"/><path d="M5 12h14"/>',
+  pause: '<rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>',
+  pointer: '<path d="m4 3 7 17 2.5-7L21 10.5z"/><path d="m13.5 13 5.5 5.5"/>',
   message: '<path d="M21 14.5a2.5 2.5 0 0 1-2.5 2.5H8l-5 4V5.5A2.5 2.5 0 0 1 5.5 3h13A2.5 2.5 0 0 1 21 5.5z"/>',
   chats: '<path d="M16 10a2 2 0 0 1-2 2H7l-4 3V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2z"/><path d="M20 9a2 2 0 0 1 1 1.7V21l-4-3h-6a2 2 0 0 1-2-2v-1"/>',
   terminal: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="m7.5 9.5 3 2.5-3 2.5"/><path d="M13 15h3.5"/>',

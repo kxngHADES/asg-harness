@@ -17,6 +17,7 @@ reloads script tools so you can edit them without restarting.
 | Tool | What it does |
 |------|--------------|
 | `office_document` ([office/](office)) | Writes Word `.docx`, PowerPoint `.pptx` and Excel `.xlsx` files from Markdown or structured input. Pure Go — no Office or Python needed. |
+| `computer` ([computer/](computer)) | Live computer use: sees the desktop and drives the real mouse and keyboard in a screenshot → act → verify loop. Native on Windows; xdotool on Linux; cliclick + System Events on macOS. Off until enabled. See [docs/computer-use.md](../docs/computer-use.md). |
 | `screenshot` ([screenshot/](screenshot)) | Renders a URL, `.html` or `.md` file in headless Chrome/Edge (or captures the screen) and shows the image to the model. Docs mode uses it to judge how documentation really looks. |
 
 ### Adding a bundled tool

@@ -78,6 +78,13 @@ how does http://localhost:3000/pricing look on a 390px wide screen?
 - If no browser is found, set `ASG_BROWSER` to the browser's executable path.
 - It asks first (it can open URLs).
 
+## computer
+
+Live [computer use](computer-use.md): screenshots of your desktop plus the real
+mouse and keyboard (click, drag, scroll, type, shortcuts, windows, clipboard).
+Off until you turn it on with `/computer on` or in the desktop's Customise page;
+mouse and keyboard actions ask first, and sensitive ones always ask.
+
 ## Your own tools: script tools
 
 Add a tool without touching Go: create a folder with a `tool.json` and a script

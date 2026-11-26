@@ -2,7 +2,10 @@ module github.com/kxngHADES/asg-harness
 
 go 1.26.0
 
-require golang.org/x/term v0.47.0
+require (
+	github.com/atotto/clipboard v0.1.4
+	golang.org/x/term v0.47.0
+)
 
 require (
 	charm.land/bubbles/v2 v2.2.1
@@ -19,7 +22,6 @@ require (
 
 require (
 	github.com/alecthomas/chroma/v2 v2.14.0 // indirect
-	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/catppuccin/go v0.2.0 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 // indirect

@@ -89,6 +89,7 @@ terminal, `asg` flags and the dashboard all edit the same file.
 | `review.passes` | minimum self-review passes (`-1` = off) |
 | `review.max_passes` | upper limit when the last pass still finds problems |
 | `loop.*` | [loop tuning](loop.md#tuning-asgconfigjson) |
+| `computer.*` | [computer use](computer-use.md#settings): on/off, monitor, approval, limits, vision model, excluded apps |
 
 `/config` in the terminal shows the file's path and every active value.
 

@@ -52,6 +52,9 @@ func NewApp(cfg *config.Store) *App {
 	for _, t := range bundled.Bundled() {
 		a.Tools.Add(t)
 	}
+	if cfg != nil {
+		a.Tools.Add(a.computerTool())
+	}
 	a.ReloadTools()
 	return a
 }
@@ -113,6 +116,9 @@ type Gate struct {
 	// Scope is what an "always" answer covers, e.g. "git" for any git
 	// command. Empty means the call can only be approved once.
 	Scope string
+	// Sensitive calls (irreversible computer-use actions) must be approved
+	// by a person, every time: front ends must not auto-allow them.
+	Sensitive bool
 }
 
 // Events receives progress from a running turn.
@@ -223,6 +229,9 @@ Keep answers concise and use Markdown. When you change files, say what you chang
 		b.WriteString("\n" + strings.TrimSpace(s.Instructions) + "\n")
 	}
 	b.WriteString(s.Track.instructions())
+	if !mode.ReadOnly() {
+		b.WriteString(computerInstructions(cfg))
+	}
 	b.WriteString(mode.instructions())
 	if s.Work != nil && extra == "" && !mode.ReadOnly() {
 		b.WriteString(s.Work.instructions(s.Track))
@@ -271,7 +280,13 @@ func SkillPrompt(sk *skills.Skill) string {
 }
 
 func (s *Session) toolset() []*tools.Tool {
-	all := append(s.app.Tools.All(), memoryTools(s.app.Memory)...)
+	var all []*tools.Tool
+	for _, t := range s.app.Tools.All() {
+		if t.Enabled == nil || t.Enabled() {
+			all = append(all, t)
+		}
+	}
+	all = append(all, memoryTools(s.app.Memory)...)
 	all = append(all, askTool())
 	if len(s.app.Skills.List()) > 0 {
 		all = append(all, s.skillTool())
@@ -428,9 +443,31 @@ func (s *Session) send(ctx context.Context, user llm.Message, ev Events, o turnO
 				Content: fmt.Sprintf("[%d image(s) returned by the tool calls above — look at them]", len(s.pendingImages)),
 				Images:  s.pendingImages})
 			s.pendingImages = nil
+			pruneToolImages(s.History, keepToolImages)
 		}
 	}
 	return "", errRoundLimit
+}
+
+// keepToolImages is how many recent rounds of tool images (screenshots)
+// stay in the history. Computer use takes one per action; keeping them all
+// would fill the context window within a few dozen actions.
+const keepToolImages = 3
+
+// pruneToolImages drops the images of all but the newest keep tool-image
+// messages, leaving a note so the model knows to look again.
+func pruneToolImages(h []llm.Message, keep int) {
+	seen := 0
+	for i := len(h) - 1; i >= 0; i-- {
+		m := &h[i]
+		if m.Role != llm.RoleUser || len(m.Images) == 0 || !strings.Contains(m.Content, "image(s) returned by the tool calls above") {
+			continue
+		}
+		if seen++; seen > keep {
+			m.Content = fmt.Sprintf("[%d image(s) returned by the tool calls above — removed to save context; take a new screenshot to see the screen now]", len(m.Images))
+			m.Images = nil
+		}
+	}
 }
 
 // numCtx is the Ollama context window to request for a provider.
@@ -464,16 +501,37 @@ func (s *Session) runTool(ctx context.Context, call llm.ToolCall, byName map[str
 		return msg, true
 	}
 	summary := describeCall(t, call)
+	need, must := t.NeedsApproval, false
+	if t.Approval != nil {
+		switch t.Approval(call.Args) {
+		case tools.ApprovalNone:
+			need = false
+		case tools.ApprovalAlways:
+			need, must = true, true
+		default:
+			need = true
+		}
+	}
 	// Writing the build's own working files (plan.md, checklist.md, …)
-	// never needs permission.
-	if t.NeedsApproval && !auto && !s.Work.containsCall(call) {
+	// never needs permission. Sensitive calls (must) always ask, even in
+	// YOLO mode, and are never remembered.
+	if need && (must || (!auto && !s.Work.containsCall(call))) {
 		cwd, _ := os.Getwd()
 		rules, rerr := perms.RulesFor(call.Name, call.Args)
+		if t.Rules != nil {
+			rules, rerr = t.Rules(call.Args), nil
+		}
+		if must {
+			rerr = perms.ErrNotRememberable
+		}
 		key := strings.Join(rules, " ")
 		if rerr != nil || (!s.allowed[key] && !s.app.Perms.Allowed(cwd, rules)) {
 			gate := Gate{Summary: summary}
 			if rerr == nil {
 				gate.Scope = perms.Describe(rules)
+			}
+			if must {
+				gate.Summary, gate.Sensitive = "⚠ sensitive: "+summary, true
 			}
 			d := ev.Approve(ctx, call, gate)
 			if d == Deny {

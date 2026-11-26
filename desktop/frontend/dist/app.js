@@ -67,7 +67,9 @@ const S = {
   cur: null,       // SessionView of the open session
   panel: null,     // { type: "files"|"artifact", ... }
   drafts: {},      // composer key -> { text, images, skill }
-  home: { kind: "chat", projectId: "", workdir: "", mode: "build" },
+  home: { kind: "chat", projectId: "", workdir: "", mode: "build", domain: "", flavor: "" },
+  domains: [],     // [{ domain, label, describe, flavors: [{ name, describe }] }]
+  computer: null,  // computer-use state while ASG controls the mouse and keyboard
   collapsed: false,
   filter: { chats: "all", q: "", arts: "all", artQ: "" },
   artCache: {},
@@ -87,6 +89,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   S.sessions = boot.sessions || [];
   S.projects = boot.projects || [];
   S.model = boot.model;
+  S.domains = boot.domains || [];
+  S.home.domain = boot.track?.domain || "software";
+  S.home.flavor = boot.track?.flavor || "";
   $("#hl").textContent = boot.highlight_css || "";
   applyTheme(boot.settings.theme);
   if (boot.data_fallback) toast("Your data folder isn't available (drive unplugged?). Using the default folder for now.", "err");
@@ -97,6 +102,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   rt().EventsOn("asg:artifacts", () => { if (S.view.name === "artifacts") renderView(); });
   rt().EventsOn("asg:schedules", () => { if (S.view.name === "schedules") renderView(); });
   rt().EventsOn("asg:model", (m) => { S.model = m; $$(".chip.model .ellip").forEach((el) => (el.textContent = modelLabel())); });
+  rt().EventsOn("asg:computer", renderComputerBanner);
   rt().EventsOn("asg:toast", (t) => toast(t.text, "", t.session ? { label: "Open", fn: () => openSession(t.session) } : null));
   // Tray menu: open a view (and maybe run an update check).
   rt().EventsOn("asg:nav", (n) => {
@@ -325,6 +331,53 @@ function modelLabel() {
   return m ? `${m.model || "no model"}` : "Model";
 }
 const MODES = { build: ["hammer", "Build", "Makes changes, behind permission gates"], plan: ["list", "Plan", "Reads and plans; changes nothing"], ask: ["eye", "Ask", "Answers questions, read-only"] };
+// Domains: what kind of work ASG does and the loop it follows (same as ctrl+t in the terminal).
+const DOMAIN_ICONS = { software: "terminal", docs: "book", cyber: "shield", devops: "wrench", pm: "calendar" };
+function domainOf(name) { return S.domains.find((d) => d.domain === name) || S.domains[0]; }
+function trackOf(key) {
+  if (key === "home" || key.startsWith("project:")) return { domain: S.home.domain, flavor: S.home.flavor };
+  const m = S.cur?.meta || {};
+  return { domain: m.domain || S.boot?.track?.domain || "software", flavor: m.flavor || "" };
+}
+function flavorOf(t) {
+  const d = domainOf(t.domain);
+  return d?.flavors.find((f) => f.name === t.flavor) || d?.flavors[0];
+}
+function domainChip(key) {
+  const t = trackOf(key), d = domainOf(t.domain), f = flavorOf(t);
+  if (!d) return "";
+  return `<button class="chip" data-act="domain" title="${esc(d.describe + (f ? " — " + f.name + ": " + f.describe : ""))}">${icon(DOMAIN_ICONS[d.domain] || "sparkles")}<span>${esc(d.label)}</span>${f && d.flavors.length > 1 ? `<span class="flav">/${esc(f.name)}</span>` : ""}${icon("chevDown", "xs")}</button>`;
+}
+function domainMenu(anchor, key) {
+  const cur = trackOf(key), curF = flavorOf(cur);
+  const items = [];
+  S.domains.forEach((d, i) => {
+    if (i) items.push({ sep: true });
+    items.push({ label: `${d.label} — ${d.describe}`, header: true });
+    d.flavors.forEach((f) => items.push({
+      icon: DOMAIN_ICONS[d.domain] || "sparkles", label: d.flavors.length > 1 ? `${d.label} / ${f.name}` : d.label, sub: f.describe,
+      check: d.domain === cur.domain && f.name === curF?.name,
+      fn: () => setTrack(key, d.domain, f.name),
+    }));
+  });
+  menu(anchor, items, "up");
+}
+async function setTrack(key, domain, flavor) {
+  if (key === "home" || key.startsWith("project:")) {
+    const t = await call("SetDefaultTrack", domain, flavor);
+    S.home.domain = t.domain; S.home.flavor = t.flavor;
+    if (S.boot) S.boot.track = t;
+  } else {
+    const meta = await call("SetSessionTrack", key, domain, flavor);
+    S.cur.meta.domain = meta.domain; S.cur.meta.flavor = meta.flavor;
+    const s = S.sessions.find((x) => x.id === key);
+    if (s) { s.domain = meta.domain; s.flavor = meta.flavor; }
+    const h = $("#sess-head"); if (h) h.outerHTML = sessHeadHTML();
+  }
+  rerenderComposer(key);
+  const d = domainOf(domain);
+  toast(`${d?.label || domain}${flavor ? " / " + flavor : ""} — ${flavorOf({ domain, flavor })?.describe || d?.describe || ""}`);
+}
 
 function composerHTML(key) {
   const d = draft(key);
@@ -357,6 +410,7 @@ function composerHTML(key) {
     <div class="row">
       <button class="chip icon" data-act="attach" title="Attach images (or paste)">${icon("clip")}</button>
       <button class="chip" data-act="mode" title="${esc(MODES[mode]?.[2] || "")}">${icon(mi)}<span>${ml}</span>${icon("chevDown", "xs")}</button>
+      ${domainChip(key)}
       ${ctxChips}
       ${d.skill ? `<button class="chip skill" data-act="clear-skill" title="Remove skill">${icon("zap")}<span class="ellip">${esc(d.skill)}</span>${icon("x", "xs")}</button>` : ""}
       <span class="grow"></span>
@@ -477,7 +531,7 @@ async function submit(key) {
     }
     let meta;
     try {
-      meta = await api().NewSession({ kind, project_id: projectId, workdir: kind === "code" ? S.home.workdir : "", mode: S.home.mode, title: "" });
+      meta = await api().NewSession({ kind, project_id: projectId, workdir: kind === "code" ? S.home.workdir : "", mode: S.home.mode, domain: S.home.domain, flavor: S.home.flavor, title: "" });
     } catch (e) { toast(errText(e), "err"); return; }
     sid = meta.id;
     S.sessions.unshift(meta);
@@ -699,6 +753,7 @@ function sessHeadHTML() {
   if (m.kind === "code" || !S.cur.sandbox) bits.push(`<span class="path" data-reveal="${esc(S.cur.workdir)}" title="Open folder">${icon("folderOpen")}${esc(shortPath(S.cur.workdir))}</span>`);
   if (m.branch) bits.push(`<span class="branch">${icon("branch")}${esc(m.branch)}</span>`);
   bits.push(`<span>${icon(MODES[m.mode]?.[0] || "hammer")}${MODES[m.mode]?.[1] || "Build"}</span>`);
+  { const t = trackOf(m.id), d = domainOf(t.domain), f = flavorOf(t); if (d) bits.push(`<span title="${esc(f?.describe || d.describe)}">${icon(DOMAIN_ICONS[d.domain] || "sparkles")}${esc(d.label)}${f && d.flavors.length > 1 ? "/" + esc(f.name) : ""}</span>`); }
   if (m.created) bits.push(`<span>${icon("clock")}${new Date(m.created).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>`);
   return `<div class="sess-head" id="sess-head">${kindChip(m.kind, "lg")}<div style="min-width:0"><h2 data-rename="${m.id}" title="Double-click to rename">${esc(m.title || "New " + (KINDS[m.kind]?.label || "chat").toLowerCase())}</h2><div class="meta">${bits.join("")}</div></div></div>`;
 }
@@ -1191,7 +1246,7 @@ function scheduleForm(s = {}) {
 
 // ---------- customise ----------
 function viewCustomise(el) {
-  const tabs = [["model", "cpu", "Models"], ["instructions", "book", "Instructions"], ["skills", "zap", "Skills"], ["tools", "wrench", "Tools"], ["memory", "bulb", "Memory"], ["behaviour", "sliders", "Behaviour"]];
+  const tabs = [["model", "cpu", "Models"], ["instructions", "book", "Instructions"], ["skills", "zap", "Skills"], ["tools", "wrench", "Tools"], ["memory", "bulb", "Memory"], ["computer", "pointer", "Computer use"], ["behaviour", "sliders", "Behaviour"]];
   el.innerHTML = `<div class="scroll"><div class="page">
     <div class="page-head"><div><h1>Customise</h1><p>Shape how ASG thinks and works — shared with the terminal app.</p></div></div>
     <div class="split"><nav class="subnav">${tabs.map(([k, ic, l]) => `<button class="${S.custTab === k ? "on" : ""}" data-custtab="${k}">${icon(ic)}${l}</button>`).join("")}</nav><div id="cust-body"><div class="panel-empty">Loading…</div></div></div>
@@ -1233,6 +1288,7 @@ async function renderCustBody() {
     }
     return;
   }
+  if (t === "computer") return renderComputerSettings(box);
   if (t === "skills") {
     const skills = (S.skills = await api().ListSkills());
     box.innerHTML = `<div class="section"><h3>Skills</h3><p>Reusable instructions ASG loads when a task needs them. Type <code>/</code> in any message to run one directly.</p>
@@ -1704,6 +1760,11 @@ async function onGlobalClick(e) {
       else { await call("SetSessionMode", key, k); S.cur.meta.mode = k; const h = $("#sess-head"); if (h) h.outerHTML = sessHeadHTML(); }
       rerenderComposer(key);
     } })), "up");
+    case "domain": return domainMenu(actEl, key);
+    case "cu-pause": return call("ComputerPause");
+    case "cu-resume": return call("ComputerResume");
+    case "cu-stop": return call("ComputerStop");
+    case "cu-save": return saveComputer();
     case "model": return modelMenu(actEl);
     case "home-project": return menu(actEl, [
       { icon: "x", label: "No project", check: !S.home.projectId, fn: () => { S.home.projectId = ""; rerenderComposer("home"); } },
@@ -1805,3 +1866,86 @@ document.addEventListener("dblclick", (e) => {
 // report script errors to the backend log (desktop.log in the data folder)
 window.addEventListener("error", (e) => { try { api().LogJS(`${e.message} @ ${e.filename}:${e.lineno}`); } catch {} });
 window.addEventListener("unhandledrejection", (e) => { try { api().LogJS("promise: " + errText(e.reason)); } catch {} });
+
+// ---------- computer use ----------
+// While ASG controls the mouse and keyboard a banner stays on top with
+// Pause / Resume / Stop. On Windows a physical Esc stops it too, and an
+// amber frame marks the monitor it is working on.
+function renderComputerBanner(st) {
+  S.computer = st;
+  const el = $("#cu-banner");
+  if (!el) return;
+  if (!st?.active) { el.hidden = true; el.innerHTML = ""; return; }
+  el.hidden = false;
+  el.className = "cu-banner" + (st.stopped ? " stopped" : st.paused ? " paused" : "");
+  const title = st.stopped ? "Computer control stopped" : st.paused ? "Computer control paused" : "ASG is controlling your computer";
+  const sub = st.stopped || st.paused ? (st.reason || "") : `${st.action ? st.action + " · " : ""}${st.actions || 0} action${st.actions === 1 ? "" : "s"}${st.stop_key ? "" : " · grab the mouse to pause"}`;
+  el.innerHTML = `<span class="dot"></span><div class="msg"><b>${esc(title)}</b><span>${esc(sub)}</span></div>
+    ${st.stop_key && !st.stopped ? `<span class="hint" title="Press ${esc(st.stop_key)} on your keyboard to stop at once"><kbd>${esc(st.stop_key)}</kbd></span>` : ""}
+    ${st.stopped ? "" : st.paused ? `<button class="btn sm" data-act="cu-resume">${icon("play", "sm")}Resume</button>` : `<button class="btn sm" data-act="cu-pause">${icon("pause", "sm")}Pause</button>`}
+    ${st.stopped ? "" : `<button class="btn sm danger" data-act="cu-stop">${icon("stop", "sm")}Stop</button>`}`;
+}
+
+async function renderComputerSettings(box) {
+  const [cfg, info] = await Promise.all([api().GetConfig(), api().ComputerInfo()]);
+  S.cfg = cfg;
+  const c = cfg.computer || {};
+  const provs = Object.keys(cfg.providers).sort();
+  const excludedMons = new Set(c.excluded_monitors || []);
+  const mons = info.monitors || [];
+  const monBtn = (i, label, sub) => `<button data-mon="${i}" class="${(c.monitor ?? 0) === i ? "on" : ""} ${excludedMons.has(i) ? "off" : ""}" title="Click to use; right-click to exclude or include"><b>${esc(label)}</b><span>${esc(sub)}</span></button>`;
+  box.innerHTML = `<div class="section"><h3>Computer use</h3><p>Let ASG see your screen and use your real mouse and keyboard — for apps that have no command line or API. It works in a loop: screenshot, one action, check the result, next.</p>
+    ${info.supported ? "" : `<div class="warnbox">${icon("alert", "sm")}<span>${esc(info.platform)}</span></div>`}
+    <div class="setting"><div class="t"><b>Allow computer use</b><span>Off by default. While it runs you'll see a banner${info.platform === "windows" ? " and an amber frame around the screen" : ""}; ${info.supported && info.platform === "windows" ? "press <kbd>Esc</kbd> or click Stop to end it at once, and moving the mouse yourself pauses it." : "click Stop to end it at once; moving the mouse yourself pauses it."}</span></div><button class="switch ${c.enabled ? "on" : ""}" id="cu-enabled"></button></div>
+    <div class="setting"><div class="t"><b>Permission</b><span>Sensitive actions (sending, deleting, closing, anything ASG flags) always ask — even with automatic approval.</span></div>
+      <select class="input" style="width:auto" id="cu-approval">
+        <option value="actions" ${c.approval === "actions" || !c.approval ? "selected" : ""}>Ask before mouse & keyboard actions</option>
+        <option value="every" ${c.approval === "every" ? "selected" : ""}>Ask before everything, screenshots too</option>
+        <option value="auto" ${c.approval === "auto" ? "selected" : ""}>Only ask for sensitive actions</option>
+      </select></div>
+    <div class="setting" style="display:block"><div class="t"><b>Monitor</b><span>Where ASG looks and works by default. Right-click a monitor to keep ASG off it entirely.</span></div>
+      <div class="mon-grid">${mons.map((m, i) => monBtn(i, `${i}${m.primary ? " · primary" : ""}`, `${m.rect.W}×${m.rect.H}`)).join("")}${mons.length > 1 ? monBtn(-1, "All monitors", "one wide screenshot") : ""}${mons.length ? "" : `<span class="panel-empty" style="padding:6px 0">No monitors detected.</span>`}</div></div>
+    <div class="setting"><div class="t"><b>Excluded apps</b><span>App names or window-title words, comma separated. Their windows are blacked out of screenshots and never clicked or typed into. ASG's own window is always protected.</span></div><input class="input mono" style="width:260px" id="cu-excl" placeholder="keepass, 1password, bank" value="${esc((c.excluded_apps || []).join(", "))}"></div>
+    <div class="setting"><div class="t"><b>Vision model</b><span>Optional. A separate model describes each screenshot in text so the chat model only plans actions — useful when your chat model can't see images, or to use a local vision model.</span></div>
+      <div class="inline"><select class="input" style="width:auto" id="cu-vprov"><option value="">Active provider</option>${provs.map((n) => `<option ${c.vision_provider === n ? "selected" : ""}>${esc(n)}</option>`).join("")}</select><input class="input mono" style="width:180px" id="cu-vmodel" placeholder="chat model looks" value="${esc(c.vision_model || "")}"></div></div>
+    <div class="setting"><div class="t"><b>Screenshot after each action</b><span>So ASG can check every click and keystroke worked. Turning it off is faster but blind.</span></div><button class="switch ${c.no_auto_screenshot ? "" : "on"}" id="cu-auto"></button></div>
+    <div class="setting"><div class="t"><b>Limits</b><span>Actions per turn · minutes per session · screenshot size (longer side, px)</span></div>
+      <div class="inline"><input class="input" style="width:80px" type="number" min="1" id="cu-max" value="${c.max_actions || 200}"><input class="input" style="width:70px" type="number" min="1" id="cu-min" value="${c.session_minutes || 30}"><input class="input" style="width:80px" type="number" min="640" max="2560" step="64" id="cu-side" value="${c.max_image_side || 1280}"></div></div>
+    <div class="setting"><div class="t"><b>Visible mouse movement</b><span>Milliseconds a move takes so you can follow it; -1 jumps instantly.</span></div><input class="input" style="width:80px" type="number" min="-1" id="cu-move" value="${c.move_ms || 250}"></div>
+    <div class="inline" style="margin-top:12px;justify-content:flex-end"><button class="btn primary" data-act="cu-save">Save</button></div></div>`;
+  $$(".switch", box).forEach((sw) => sw.addEventListener("click", () => sw.classList.toggle("on")));
+  S.cuDraft = { monitor: c.monitor ?? 0, excluded: excludedMons };
+  $$("[data-mon]", box).forEach((b) => {
+    const i = +b.dataset.mon;
+    b.addEventListener("click", () => { S.cuDraft.monitor = i; $$("[data-mon]", box).forEach((x) => x.classList.toggle("on", x === b)); });
+    b.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (i < 0) return;
+      if (S.cuDraft.excluded.has(i)) S.cuDraft.excluded.delete(i); else S.cuDraft.excluded.add(i);
+      b.classList.toggle("off", S.cuDraft.excluded.has(i));
+    });
+  });
+}
+
+async function saveComputer() {
+  const cfg = await api().GetConfig();
+  const g = (id) => $(id)?.value ?? "";
+  cfg.computer = {
+    ...(cfg.computer || {}),
+    enabled: $("#cu-enabled").classList.contains("on"),
+    approval: g("#cu-approval"),
+    monitor: S.cuDraft?.monitor ?? 0,
+    excluded_monitors: [...(S.cuDraft?.excluded || [])],
+    excluded_apps: g("#cu-excl").split(",").map((x) => x.trim()).filter(Boolean),
+    vision_provider: g("#cu-vprov"),
+    vision_model: g("#cu-vmodel").trim(),
+    no_auto_screenshot: !$("#cu-auto").classList.contains("on"),
+    max_actions: +g("#cu-max") || 200,
+    session_minutes: +g("#cu-min") || 30,
+    max_image_side: +g("#cu-side") || 1280,
+    move_ms: +g("#cu-move") || 250,
+  };
+  await call("SaveConfig", cfg);
+  toast(cfg.computer.enabled ? "Computer use is on" : "Saved");
+  renderCustBody();
+}

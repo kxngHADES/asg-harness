@@ -75,8 +75,12 @@ type SessionMeta struct {
 	// Workdir is the folder the agent works in. Empty means the session's
 	// own sandbox inside the data folder (kept relative so the data folder
 	// can move).
-	Workdir   string    `json:"workdir,omitempty"`
-	Mode      string    `json:"mode"`
+	Workdir string `json:"workdir,omitempty"`
+	Mode    string `json:"mode"`
+	// Domain and Flavor are the session's track (software/work, cyber/red,
+	// …). Empty uses the saved default.
+	Domain    string    `json:"domain,omitempty"`
+	Flavor    string    `json:"flavor,omitempty"`
 	Created   time.Time `json:"created"`
 	Updated   time.Time `json:"updated"`
 	Pinned    bool      `json:"pinned,omitempty"`
