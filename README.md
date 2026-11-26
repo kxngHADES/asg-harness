@@ -109,7 +109,7 @@ Plan and ask are never given a tool that can change your project.
 **Domains.** The kind of work changes the workflow the model follows. *software/work* only allows code
 the current build uses and ends with a security pass. *docs* screenshots the rendered page after every
 edit. *cyber* (red or blue) confirms scope first and ends with a full report. *devops* reviews pipelines
-and infra. *pm* plans, estimates and tracks risk. See [domains](docs/domains.md).
+and infra. *pm* plans, estimates and tracks risk. Switch with <kbd>Ctrl</kbd> <kbd>T</kbd> in the terminal or the domain chip in the desktop app. See [domains](docs/domains.md).
 
 **Loop harness.** `/loop <objective>` runs this, and the harness decides what happens next, not the model:
 
@@ -125,6 +125,12 @@ Details in [docs/loop.md](docs/loop.md).
 
 **Self-review.** After every answer ASG goes back over its work at least four times, each from a
 different angle, and fixes what it finds (`/review` to change that). If the model is missing something only you know, it stops and asks.
+
+**Computer use.** Turn it on (`/computer on`, or Customise → Computer use in the desktop app) and ASG
+can see your screen and drive your real mouse and keyboard: screenshot → one action → check → next.
+Every action asks first, sensitive ones always ask (even in YOLO), excluded apps are blacked out, and
+<kbd>Esc</kbd> (Windows), the desktop's Stop button or grabbing the mouse takes control back.
+See [docs/computer-use.md](docs/computer-use.md).
 
 **Images and voice.** Paste or drag in screenshots. Replies can be read aloud by the model itself, an
 Ollama speech model, OpenAI TTS, or your OS voice.

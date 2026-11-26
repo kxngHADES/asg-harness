@@ -25,6 +25,7 @@ import (
 	"github.com/kxngHADES/asg-harness/internal/llm"
 	"github.com/kxngHADES/asg-harness/internal/media"
 	itools "github.com/kxngHADES/asg-harness/internal/tools"
+	"github.com/kxngHADES/asg-harness/tools/computer"
 )
 
 type attachment struct {
@@ -46,6 +47,7 @@ type REPL struct {
 	cancel    context.CancelFunc
 	pending   []attachment
 	lastReply string
+	comp      computer.State // computer-use state for the status strip
 
 	spinID atomic.Int64
 	md     *mdStream // worker only
@@ -94,6 +96,7 @@ var commands = []command{
 	{"/skill", "add <src> | rm <name> | show <name>", "import a skill (path, URL, github:owner/repo[/path]) or remove one"},
 	{"/tools", "", "list tools the model can call (reloads script tools)"},
 	{"/tool", "new <name>", "create a script tool in ~/.asg/tools (see tools/README.md)"},
+	{"/computer", "[on|off|status|monitor <n>|approval <level>]", "live computer use: let ASG see the screen and use your mouse and keyboard"},
 	{"/yolo", "", "toggle YOLO: run tools without asking (or press ctrl+y)"},
 	{"/config", "", "show config file location and active settings"},
 	{"/usage", "", "show token usage for this session"},
@@ -150,6 +153,7 @@ func (r *REPL) Run() error {
 	r.prog = tea.NewProgram(newModel(r))
 	r.out = newOutbox(r.prog)
 	defer r.out.close()
+	defer r.watchComputer()()
 	debugf("tui start")
 	_, err := r.prog.Run()
 	r.interrupt()
@@ -675,6 +679,8 @@ func (r *REPL) command(line string) (quit bool) {
 		r.reviewCommand(args)
 	case "/work":
 		r.workCommand()
+	case "/computer":
+		r.computerCommand(args)
 	case "/yolo":
 		r.println(r.yoloLine(r.toggleYolo()))
 	case "/mode", "/modes":

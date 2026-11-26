@@ -97,7 +97,58 @@ type Config struct {
 	// Domain and Flavor are the default work track (e.g. software / work).
 	Domain string `json:"domain,omitempty"`
 	Flavor string `json:"flavor,omitempty"`
+	// Computer configures live computer use (the computer tool).
+	Computer ComputerConfig `json:"computer"`
 }
+
+// ComputerConfig configures computer use: ASG seeing the screen and moving
+// the real mouse and keyboard. It is off until the user turns it on.
+type ComputerConfig struct {
+	Enabled bool `json:"enabled"`
+	// Monitor is the monitor used when a call names none: 0 is the primary
+	// monitor, 1… the others in the order list_monitors shows them, and -1
+	// the whole desktop across every monitor.
+	Monitor int `json:"monitor"`
+	// MaxImageSide caps the longer side of screenshots sent to the model
+	// (default 1280). Coordinates the model gives are in that image.
+	MaxImageSide int `json:"max_image_side,omitempty"`
+	// NoAutoScreenshot stops ASG from taking a screenshot after every mouse
+	// or keyboard action so the model can verify it.
+	NoAutoScreenshot bool `json:"no_auto_screenshot,omitempty"`
+	// VisionProvider / VisionModel pick a separate perception model: it looks
+	// at each screenshot and describes it in text (with coordinates) for the
+	// chat model, which then only plans the actions. Empty sends the image
+	// to the chat model itself. VisionProvider defaults to the active one.
+	VisionProvider string `json:"vision_provider,omitempty"`
+	VisionModel    string `json:"vision_model,omitempty"`
+	// Approval is the permission level:
+	//   "actions" (default) — looking is free, every mouse/keyboard action asks
+	//   "every"             — every call asks, screenshots too
+	//   "auto"              — nothing asks except sensitive actions
+	// Sensitive actions (sending, deleting, closing, anything the model flags)
+	// always ask, even in YOLO mode.
+	Approval string `json:"approval,omitempty"`
+	// MaxActions caps mouse/keyboard actions in one turn (default 200).
+	MaxActions int `json:"max_actions,omitempty"`
+	// SessionMinutes ends control this long after a turn's first action
+	// (default 30).
+	SessionMinutes int `json:"session_minutes,omitempty"`
+	// MoveMillis is how long a visible mouse move takes (default 250; -1 jumps).
+	MoveMillis int `json:"move_ms,omitempty"`
+	// ExcludedApps are app (process) names or window-title words ASG must not
+	// see or touch: their windows are blacked out of screenshots and input
+	// into them is refused.
+	ExcludedApps []string `json:"excluded_apps,omitempty"`
+	// ExcludedMonitors are monitor numbers (as in Monitor) never captured or used.
+	ExcludedMonitors []int `json:"excluded_monitors,omitempty"`
+}
+
+// Computer approval levels.
+const (
+	ComputerApproveActions = "actions"
+	ComputerApproveEvery   = "every"
+	ComputerApproveAuto    = "auto"
+)
 
 // DefaultNumCtx is the Ollama context window used when num_ctx is unset.
 const DefaultNumCtx = 16384
@@ -204,6 +255,31 @@ func (c *Config) normalize() {
 	c.Audio.OpenAIProvider = ""
 	if c.Audio.Fallback.Engine == "" || c.Audio.Fallback.Engine == "auto" {
 		c.Audio.Fallback.Engine = "system"
+	}
+	c.Computer.normalize()
+}
+
+func (c *ComputerConfig) normalize() {
+	if c.MaxImageSide <= 0 {
+		c.MaxImageSide = 1280
+	}
+	c.MaxImageSide = min(max(c.MaxImageSide, 640), 2560)
+	switch c.Approval {
+	case ComputerApproveActions, ComputerApproveEvery, ComputerApproveAuto:
+	default:
+		c.Approval = ComputerApproveActions
+	}
+	if c.MaxActions <= 0 {
+		c.MaxActions = 200
+	}
+	if c.SessionMinutes <= 0 {
+		c.SessionMinutes = 30
+	}
+	if c.MoveMillis == 0 {
+		c.MoveMillis = 250
+	}
+	if c.Monitor < -1 {
+		c.Monitor = 0
 	}
 }
 

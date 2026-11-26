@@ -52,6 +52,8 @@ type App struct {
 	trayOn   atomic.Bool
 	quitting atomic.Bool
 
+	stopComputer func()
+
 	// Hooks replace the Wails runtime when the UI is served for development
 	// (devserve.go): events go to the browser and folder picks come from it.
 	emitHook  func(name string, data any)
@@ -84,6 +86,7 @@ func (a *App) startup(ctx context.Context) {
 		_ = a.store.Init()
 	}
 	a.startScheduler()
+	a.stopComputer = a.startComputer()
 	a.stopUpd = make(chan struct{})
 	a.startUpdateChecks()
 	if addr := os.Getenv("ASG_MOBILE_ADDR"); addr != "off" {
@@ -140,6 +143,9 @@ func (a *App) shutdown(context.Context) {
 	if a.netBridge != nil {
 		a.netBridge.stop()
 	}
+	if a.stopComputer != nil {
+		a.stopComputer()
+	}
 	a.stopTray()
 }
 
@@ -190,6 +196,9 @@ type Boot struct {
 	CrabIdle     string        `json:"crab_idle"`
 	CrabWork     string        `json:"crab_work"`
 	Tray         bool          `json:"tray"` // a tray icon is showing (Windows, Linux)
+	Domains      []DomainInfo  `json:"domains"`
+	Track        agent.Track   `json:"track"` // the default for new chats
+	Computer     ComputerInfo  `json:"computer"`
 }
 
 func (a *App) Bootstrap() Boot {
@@ -206,6 +215,7 @@ func (a *App) Bootstrap() Boot {
 		Home: home, Sessions: a.store.ListSessions(), Projects: a.store.Projects(),
 		Model: a.modelInfo(), HighlightCSS: HighlightCSS(), OS: runtime.GOOS, Version: version, User: user,
 		CrabIdle: sprite.SVG(sprite.Idle, 140, 3), CrabWork: sprite.SVG(sprite.Work, 110, 3), Tray: a.trayOn.Load(),
+		Domains: a.ListDomains(), Track: a.DefaultTrack(), Computer: a.ComputerInfo(),
 	}
 }
 
@@ -218,6 +228,8 @@ type NewSessionOpts struct {
 	ProjectID string `json:"project_id"`
 	Workdir   string `json:"workdir"`
 	Mode      string `json:"mode"`
+	Domain    string `json:"domain"`
+	Flavor    string `json:"flavor"`
 	Title     string `json:"title"`
 }
 
@@ -245,9 +257,11 @@ func (a *App) NewSession(o NewSessionOpts) (SessionMeta, error) {
 		mode = string(agent.ModeBuild)
 	}
 	now := time.Now()
+	t := a.resolveTrack(o.Domain, o.Flavor)
 	f := &SessionFile{SessionMeta: SessionMeta{
 		ID: newID("s"), Title: strings.TrimSpace(o.Title), Kind: o.Kind, ProjectID: o.ProjectID,
-		Workdir: o.Workdir, Mode: mode, Created: now, Updated: now, Model: a.modelInfo().Model,
+		Workdir: o.Workdir, Mode: mode, Domain: string(t.Domain), Flavor: t.Flavor,
+		Created: now, Updated: now, Model: a.modelInfo().Model,
 	}}
 	if f.Kind == KindCode {
 		f.Branch = gitBranch(f.Workdir)
@@ -345,6 +359,7 @@ func (a *App) loadLive(id string) (*liveSession, error) {
 		}
 	}
 	ls := &liveSession{file: f, sess: s, approvals: map[string]chan agent.Decision{}, asks: map[string]chan string{}}
+	a.applyTrack(ls)
 	a.live[id] = ls
 	return ls, nil
 }
@@ -580,6 +595,9 @@ func (a *App) runTurn(ls *liveSession, ctx context.Context, msg llm.Message, una
 	if m, ok := agent.ParseMode(meta.Mode); ok {
 		ls.sess.Mode = m
 	}
+	ls.mu.Lock()
+	a.applyTrack(ls)
+	ls.mu.Unlock()
 	a.emit("asg:turn", map[string]any{"session": id, "type": "status", "text": ""})
 	ev := &turnEvents{a: a, ls: ls, id: id, unattended: unattended, allowAll: allowAll}
 	start := time.Now()

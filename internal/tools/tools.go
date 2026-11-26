@@ -37,10 +37,32 @@ type Tool struct {
 	RunMedia func(ctx context.Context, args json.RawMessage) (string, []llm.Image, error)
 	// Describe renders a one-line summary of a call for approval prompts.
 	Describe func(args json.RawMessage) string
+	// Approval, when set, decides per call how the permission gate treats
+	// it, overriding NeedsApproval (which still decides read-only modes).
+	Approval func(args json.RawMessage) Approval
+	// Rules, when set, names the "always allow" rules a call needs instead
+	// of the tool name, so remembering one kind of call doesn't allow all.
+	Rules func(args json.RawMessage) []string
+	// Enabled, when set, hides the tool from the model while it returns false
+	// (e.g. computer use until the user turns it on).
+	Enabled func() bool
 	// Source says where the tool comes from: "builtin", "bundled" (the
 	// repo's tools/ folder, compiled in) or the folder of a script tool.
 	Source string
 }
+
+// Approval is how a single call passes the permission gate.
+type Approval int
+
+const (
+	// ApprovalAsk asks unless YOLO is on or an "always allow" rule covers it.
+	ApprovalAsk Approval = iota
+	// ApprovalNone runs without asking.
+	ApprovalNone
+	// ApprovalAlways asks every time, even in YOLO mode, and the answer is
+	// never remembered: for sensitive or irreversible actions.
+	ApprovalAlways
+)
 
 type Registry struct {
 	mu    sync.RWMutex

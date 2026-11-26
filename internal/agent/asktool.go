@@ -8,6 +8,7 @@ import (
 
 	"github.com/kxngHADES/asg-harness/internal/llm"
 	"github.com/kxngHADES/asg-harness/internal/tools"
+	"github.com/kxngHADES/asg-harness/tools/computer"
 )
 
 // Asker is implemented by front ends that can put a question to the user
@@ -78,6 +79,9 @@ func askTool() *tools.Tool {
 			if err != nil {
 				return "", err
 			}
+			// Paused computer control tells the model to ask before going on;
+			// the user's answer is the go-ahead.
+			computer.ResumeAfterAnswer()
 			if strings.TrimSpace(ans) == "" {
 				return "The user gave no answer. Make the most reasonable assumption, state it, and continue.", nil
 			}

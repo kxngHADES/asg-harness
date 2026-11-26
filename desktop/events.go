@@ -61,6 +61,10 @@ func (e *turnEvents) nextID() string {
 }
 
 func (e *turnEvents) Approve(ctx context.Context, c llm.ToolCall, gate agent.Gate) agent.Decision {
+	if gate.Sensitive && (e.allowAll || e.unattended) {
+		e.Notice(fmt.Sprintf("%s is a sensitive action that a person must approve — skipped in this unattended run.", c.Name))
+		return agent.Deny
+	}
 	if e.allowAll || e.inSandbox(c) {
 		return agent.Allow
 	}
